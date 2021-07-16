@@ -1,0 +1,13 @@
+{% for _interface in network %}
+auto {{ _interface.name }}
+{% if 'dhcp' in _interface.address %}
+iface {{ _interface.name }} inet dhcp
+
+{% else %}
+iface {{ _interface.name }} inet static
+    {{ address {{ ip_address }}
+    gateway {{ gateway }}
+    nameserver {{ nameserver }}
+
+{% endif %}
+{% endfor %}

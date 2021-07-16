@@ -63,9 +63,8 @@
       | default(False) }}"
 
 - name: Disable efi if there is no EFI partition
-  set_fact:
-    use_efi: False
-  when: use_efi and _efi_mountpoint|default(False) == False
+  ansible.builtin.fail:
+  when: _efi_mountpoint|default(False) == False
 
 - name: Cursory variable check
   include_tasks: sanity.yml
@@ -91,12 +90,64 @@
       | first
       | default(False) }}"
 
+# add more sources for apt
+- name: update sources.list
+  template:
+    src: "sources_ubuntu.list"
+    dest: "/etc/apt/sources.list"
+    mode: "0644"
+    owner: root
+    group: root
+  when: release in ["xenial", "artful", "bionic", "focal", "hirsuite"]
+
+- name: install ZFS ppa for bionic
+  apt_repository:
+    repo: ppa:jonathonf/zfs
+  register: _dbstrp_zfs_backport_repo
+  when: >-
+    ansible_distribution == "Ubuntu"
+    and ansible_distribution_release in ["bionic", "disco"]
+    and zfs_pool is defined
+    and dbstrp_zfs_backport|default(False)
+
+- name: update sources.list
+  template:
+    src: "sources_debian.list"
+    dest: "/etc/apt/sources.list"
+    mode: "0644"
+    owner: root
+    group: root
+  when: release in ["stretch", "buster", "sid", "bullseye"]
+
 - name: Install global dependencies
   apt:
     name: "{{ dependencies.global }}"
     state: latest
     update_cache: yes
-    cache_valid_time: "{{ debian_cache_valid_time|default(7200) }}"
+
+- name: install zfs dependencies
+  apt:
+    name: "{{ dependencies.zfs }}"
+    state: latest
+
+# In some cases the old module is still loaded, this will unload and reload.
+- block:
+    - name: stop zed
+      systemd:
+        name: zfs-zed.service
+        state: stopped
+
+    - name: unload ZFS modules
+      modprobe:
+        name: "zfs"
+        state: "absent"
+
+    - name: load ZFS module
+      modprobe:
+        name: zfs
+        state: present
+
+  when: dbstrp_zfs_backport|default(False)
 
 - name: check if already bootstrapped
   stat:
@@ -153,6 +204,9 @@
       set_fact:
         _target_devices: "{{ _target_devices + [item.device] }}"
       with_items: "{{ layout }}"
+
+    - name: Cleanup any previos deployment
+      include_tasks: cleanup.yml
 
     - name: wipe devices
       include_tasks: wipe.yml
@@ -214,38 +268,38 @@
     - name: mount filesystems
       include_tasks: mount.yml
 
-    - name: run bootstrap
+    - name: Bootstrap the new install
       include_tasks: bootstrap.yml
 
-    - name: configure system
+    - name: Configure the new install
       include_tasks: configure.yml
 
-    - name: create debootstrap user on target
+    - name: Create debootstrap user on target
       include_tasks: user.yml
       vars:
         _tgt_user: yes
 
-    - name: create ssh directory for bootstrap user
+    - name: Create ssh directory for bootstrap user
       file:
         state: directory
         path: "{{ dbstrp_mountpoint }}/home/{{ dbstrp_user['name'] }}/.ssh"
         owner: "{{ dbstrp_user['name'] }}"
 
-    - name: create ssh directory for bootstrap user on host
+    - name: Create ssh directory for bootstrap user on host
       file:
         state: directory
         path: "/tmp/.debootstrap-ssh"
         owner: "{{ dbstrp_user['name'] }}"
         mode: 0700
 
-    - name: setup keys for bootstrap user
+    - name: Setup keys for bootstrap user
       authorized_key:
         key: "{{ item }}"
         path: "{{ dbstrp_mountpoint }}/home/{{ dbstrp_user['name'] }}/.ssh/authorized_keys"
         user: "{{ dbstrp_user['name'] }}"
       with_items: "{{ dbstrp_ssh_keys }}"
 
-    - name: allow sudo for debootstrap user
+    - name: Allow sudo for debootstrap user
       copy:
         dest: "{{ dbstrp_mountpoint }}/etc/sudoers.d/{{ dbstrp_user['name'] }}"
         owner: root
@@ -253,7 +307,7 @@
         mode: 0440
         content: "{{ dbstrp_user['name'] }} ALL=(ALL) NOPASSWD:ALL"
 
-    - name: mark as bootstrapped
+    - name: Mark as bootstrapped
       copy:
         dest: "/root/.bootstrap_complete"
         content: ""
@@ -261,7 +315,7 @@
         group: root
         mode: 0600
 
-    - name: register bootstrapped fact
+    - name: Register bootstrapped fact
       set_fact:
         bootstrapped: yes
 

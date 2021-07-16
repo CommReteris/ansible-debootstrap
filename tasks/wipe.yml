@@ -5,6 +5,52 @@
     state: absent
     path: '/root/.bootstrap_complete'
 
+- name: Read device information
+  community.general.parted: device={{ item }} unit=MiB
+  register: _target_device_info
+  loop: "{{ _target_devices }}"
+
+- name: Import previously existing zpools from target devices
+  command: zpool import -d {{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}} -a -f -N
+  when:
+    - "item[1] is defined"
+  loop: "{{ _target_device_info.results|subelements('partitions') }}"
+
+- name: Gather facts about previously existing zpools ZFS pools
+  community.general.zpool_facts: properties='name'
+
+- name: Destroy previously existing zpools ZFS pools
+  command: zpool destroy -f {{ item.name }}
+  when: "ansible_zfs_pools is defined"
+  loop: '{{ ansible_zfs_pools }}'
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Clear filesystems
+  command: >
+    {%- set _fs_to_wipe=item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string -%}
+    wipefs --all {{ _fs_to_wipe }}
+  when:
+    - "item[1] is defined"
+  loop: "{{ _target_device_info.results|subelements('partitions') }}"
+
+- name: Clear any residual ZFS labels from partitions
+  command: >
+    {%- set _zfs_to_wipe=item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string -%}
+    zpool labelclear -f {{ _zfs_to_wipe }}
+  when:
+    - "item[1] is defined"
+    - "item.1.fstype == 'zfs'"
+  loop: "{{ _target_device_info.results|subelements('partitions') }}"
+
+- name: Delete all partitions on target devices
+  community.general.parted:
+    device: "{{ item.0.disk.dev }}"
+    number: "{{ item.1.num }}"
+    state: absent
+  when: "item[1] is defined"
+  loop: "{{ _target_device_info.results|subelements('partitions') }}"
+
 - name: Wipe disklabel
   command: sgdisk -Z {{ item }}
   with_items: "{{ _target_devices }}"

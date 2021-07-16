@@ -1,3 +1,2 @@
 deb http://deb.debian.org/debian {{ release }} main contrib non-free
 deb http://deb.debian.org/debian {{ release }}-updates main contrib non-free
-deb http://security.debian.org {{ release }}/updates main

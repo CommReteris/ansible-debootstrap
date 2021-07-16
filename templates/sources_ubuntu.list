@@ -38,7 +38,7 @@ deb http://archive.ubuntu.com/ubuntu/ {{ release }}-backports main restricted un
 ## 'partner' repository.
 ## This software is not part of Ubuntu, but is offered by Canonical and the
 ## respective vendors as a service to Ubuntu users.
-# deb http://archive.canonical.com/ubuntu {{ release }} partner
+deb http://archive.canonical.com/ubuntu {{ release }} partner
 # deb-src http://archive.canonical.com/ubuntu {{ release }} partner
 
 deb http://security.ubuntu.com/ubuntu/ {{ release }}-security main restricted

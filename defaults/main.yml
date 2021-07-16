@@ -15,4 +15,4 @@ locales:
 # graphical grub?
 text_console: no
 
-dbstrp_mountpoint: /mnt/bootstrap
+

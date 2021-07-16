@@ -21,16 +21,65 @@
   with_items: "{{ _tmp['blockdevices'] }}"
   when: item.uuid is defined and _tgt_devices['/dev/mapper/' + item.name] is defined
 
-- name: place templates in /etc
+- name: Set the hostname
+  copy:
+    dest: "{{ _tgt_root }}/etc/hostname"
+    content: "{{ fqdn.split('.')[0] }}"
+    mode: 0o644
+
+- name: Configure additional hosts
+  ansible.builtin.lineinfile:
+    path: "{{ _tgt_root }}/etc/hosts"
+    insertafter: '^127.0.0.1'
+    line: "{{ item }}"
+  loop: "{{ etchosts }}"
+
+- name: Instantiate templates to /etc
   template:
     src: "{{ item.src }}"
-    dest: "{{ _tgt_root }}/etc/{{ item.dest|default(item.src) }}"
+    dest: "{{ _tgt_root }}/etc/{{ item.dest | default(item.src) }}"
     owner: "{{ item.owner|default('root') }}"
     group: "{{ item.group|default('root') }}"
     mode: "{{ item.mode|default('0644') }}"
   with_items:
-  - { src: 'fstab' }
   - { src: 'crypttab', dest: 'crypttab' }
+  - { src: 'interfaces', dest: 'network/interfaces' }
+  - { src: 'resolv.conf', dest: 'resolv.conf' }
+
+- name: Configure basic mountpoints
+  mount:
+    fstype: "{{ item.value['fs'] }}"
+    opts: "{{ item.value['mountopts'] | default('defaults') }}"
+    path: "{{ item.value['mount'] }}"
+    src: "{{ 'UUID='+item.value['uuid']  | default(item.key) }}"
+    fstab: "{{ _tgt_root }}/etc/fstab"
+    state: present
+  when:
+    - "not (item.value['encrypt'] | default(False))"
+    - "not item.value['fs'] == 'zfs_member'"
+    - "'mount' in item.value"
+  loop: "{{ _tgt_devices|dict2items }}"
+
+- name: Configure ZFS legacy mounts
+  mount:
+    fstype: zfs
+    opts: defaults
+    path: "{{ item.mount }}"
+    src: "{{ item.path }}"
+    fstab: "{{ _tgt_root }}/etc/fstab"
+    state: present
+  when: "'mount' in item"
+  loop: "{{ zfs_fs }}"
+
+- name: Configure NFS
+  mount:
+    fstype: nfs
+    opts: defaults
+    path: "{{ nfs_mountroot }}/{{ item.1 }}"
+    src: "{{ item.0.address }}/{{ item.1 }}"
+    fstab: "{{ _tgt_root }}/etc/fstab"
+    state: present
+  loop: "{{ nfs_servers|subelements('mounts') }}"
 
 - name: Add thin provisoning hook
   copy:
@@ -49,16 +98,55 @@
     content: "export CRYPTSETUP=y"
   when: _luksopen is defined and _luksopen.changed
 
+- name: Ensure ZFS update rebuilds all initramfs
+  copy:
+    dest: "{{ _tgt_root }}/etc/dkms/zfs.conf"
+    content: REMAKE_INITRD=yes
+    mode: 0o644
+
+- name: Create key to sign kernel modules
+  command: |
+    chroot {{ _tgt_root }} openssl \
+      req \
+      -nodes \
+      -new -x509 -newkey rsa:2048 \
+      -keyout /root/mok.priv \
+      -outform DER -out /root/mok.der \
+      -days 36500 \
+      -subj "/CN={{ fqdn }} module signing key/"
+  args:
+    creates: /root/mok.priv
+
 - name: update initramfs
-  command: chroot {{ _tgt_root }} update-initramfs -u -k all
+  command: chroot {{ _tgt_root }} update-initramfs -c -k all
 
-- name: set up grub
+- name: install boot loader (grub-efi)
+  command: >
+    chroot {{ _tgt_root }} grub-install \
+    --target=x86_64-efi \
+    --efi-directory=/boot/efi \
+    --force-extra-removable \
+    --bootloader-id=debian \
+    --recheck \
+    --no-floppy
+
+- name: Ensure /boot/default/grub exists
+  file:
+    dest: "{{ _tgt_root }}/etc/default/grub"
+    state: touch
+    mode: '644'
+
+- name: Set kernel commandline defaults
+  lineinfile:
+    path: "{{ _tgt_root }}/etc/default/grub"
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="{{ kernel_cmdline }}"'
+
+- name: Disable grub-probe
+  command: chroot {{ _tgt_root }} echo 'GRUB_DISABLE_OS_PROBER=true' >> /etc/default/grub
+
+- name: Update grub
   command: chroot {{ _tgt_root }} update-grub
-
-- name: install boot loader (grub)
-  command: chroot {{ _tgt_root }} grub-install {{ item['device'] }}
-  with_items: "{{ layout }}"
-  when: not item['skip_grub']|default(False)
 
 - name: set root password
   command: >

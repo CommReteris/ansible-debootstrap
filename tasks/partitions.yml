@@ -32,12 +32,10 @@
 - name: check for partitions on target_device
   set_fact:
     _devices_used: "{{ _devices_used + [item['name']] }}"
-  with_items: "{{ block_devices }}"
+  loop: "{{ block_devices }}"
   when: item['children'] is defined
-
-- fail:
-    msg: "Device(s) already contain partitions: {{ _devices_used|join(', ') }}"
-  when: "_devices_used|length() > 0"
+  loop_control:
+    label: "{{ item['name'] }}"
 
 - name: Create Partitions
   command: >

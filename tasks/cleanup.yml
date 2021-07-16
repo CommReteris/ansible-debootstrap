@@ -1,31 +1,45 @@
 ---
 
-- name: remove bootstrap user
-  command: chroot {{ dbstrp_mountpoint }} userdel --remove debootstrap
-
-- name: remove bootstrap sudoers file
-  file:
-    state: absent
-    path: "{{ dbstrp_mountpoint }}/etc/sudoers.d/debootstrap"
-
-- name: umount pseudo filesystems
-  command: umount {{ _tgt_root }}/{{ item }}
+- name: Ensure pseudo filesystems are unmounted
+  ansible.posix.mount:
+    path: "{{ dbstrp_mountpoint }}/{{ item }}"
+    state: unmounted
   with_items: "{{ pseudo_fs|reverse }}"
-  when: _pseudomount is defined and _pseudomount.changed
 
-- name: umount target
-  shell: >
-    umount {{ _tgt_root }}{{ _mountpoints[item]['mount'] }}
-  with_items: "{{ (_mountlist|sort)[::-1] }}" # | reverse seems to be broken
-  when: _mount is defined and _mount.changed
+- name: Ensure {{ dbstrp_mountpoint }}/boot/efi is not mounted
+  ansible.posix.mount:
+    path: "{{ dbstrp_mountpoint }}/boot/efi"
+    state: unmounted
 
-- name: export zpools
-  shell: >
-    zpool export {{ item['poolname']|default('rpool') }}
-  with_items: zfs_pool|default([])|reverse
-  when: zfs_pool is defined and zfs_fs is defined
+- name: Check for mounted targets
+  command: mount
+  register: _existing_mounts
 
-- name: deactivate volumes
+- name: Unmount anything residual in target directory
+  command: umount -Rfl {{ dbstrp_mountpoint }}
+  when: "dbstrp_mountpoint in _existing_mounts.stdout"
+
+- name: Unmount any residual zfs mounts
+  command: zfs umount -f -a
+  when:
+    - "dbstrp_mountpoint in _existing_mounts.stdout"
+    - "'type zfs' in _existing_mounts.stdout"
+
+- name: Remove any residual directories in {{ dbstrp_mountpoint }}
+  file:
+    path: "{{ dbstrp_mountpoint }}"
+    state: absent
+
+- name: Gather facts about ZFS pools
+  community.general.zpool_facts: properties='name'
+
+- name: Export ZFS pools
+  command: zpool export -f -a
+  loop: '{{ ansible_zfs_pools }}'
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Deactivate volumes
   lvol:
     active: no
     lv: "{{ volume.lvm.lv|default(volume.lvm.thinpool) }}"
@@ -38,15 +52,14 @@
     volume.lvm is defined and (
     volume.lvm.lv is defined or volume.lvm.thinpool is defined)
 
-- name: Close luks devices
-  command: >
-    cryptsetup luksClose /dev/mapper/{{ item.value['target'] }}
-  loop: "{{ _encrypt_targets|default({})|dict2items }}"
-  loop_control:
-    label: "{{ item.key }}"
-  when: _luksopen is defined and _luksopen.changed
+- name: Gather luks targets
+  command: dmsetup info -c -o Name --noheadings
+  register: _targets
+
+- name: Close any open luks tagets
+  command: "cryptsetup luksClose /dev/mapper/{{ item }}"
+  when: "not item == 'No devices found'"
+  loop: "{{ _targets.stdout_lines }}"
 
 - name: stop raid devices
-  command: "mdadm --stop {{ item.key }}"
-  loop: "{{ _tgt_devices|dict2items }}"
-  when: "'/dev/md' in item.key"
+  command: "mdadm --stop --scan"

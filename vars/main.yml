@@ -10,6 +10,7 @@ dependencies:
     - uuid-runtime
     - eatmydata
     - dosfstools
+    - openssl
   encryption:
     - cryptsetup
   lvm:
@@ -20,33 +21,38 @@ dependencies:
   zfs:
     - "linux-headers-{{ ansible_kernel }}"
     - linux-headers-generic
+    - dkms
     - zfsutils-linux
     - zfs-initramfs
+    - zfs-zed
     - zfs-dkms  # for ZFS 0.8 using the PPA
 
 mirrors:
   stretch: http://httpredir.debian.org/debian
   buster: http://httpredir.debian.org/debian
+  bullseye: http://httpredir.debian.org/debian
   xenial: http://archive.ubuntu.com/ubuntu
   bionic: http://archive.ubuntu.com/ubuntu
   eoan: http://archive.ubuntu.com/ubuntu
   focal: http://archive.ubuntu.com/ubuntu
   groovy: http://archive.ubuntu.com/ubuntu
+  hirsuite: http://archive.ubuntu.com/ubuntu
 
-supported_releases: ['stretch', 'buster', 'bionic', 'eoan', 'focal', 'groovy']
-
-_target_devices: []
-_devices_used: []
-_mountlist: []
-_encrypt_targets: {}
+supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsuite']
 
 required_packages:
   all:
-    - grub-pc
+    - console-setup
+    - grub-efi-amd64
+    - grub-efi-amd64-signed
+    - shim-signed
     - openssh-server
     - locales
     - python3-minimal
     - sudo
+  hirsuite:
+    - python-minimal
+    - linux-image-generic
   bionic:
     - python-minimal
     - linux-image-generic
@@ -65,13 +71,16 @@ required_packages:
   buster:
     - python-minimal
     - linux-image-amd64
+  bullseye:
+    - python2-minimal
+    - linux-image-amd64
 
 _apt_env:
   DEBIAN_FRONTEND: noninteractive
 
 dbstrp_mkfs_defaults:
-  ext4: -b 4096
-  xfs: -m crc=1 -s size=4096 -b size=4096
+  ext4: -f -b 4096
+  xfs: -f -m crc=1 -s size=4096 -b size=4096
 
 # Name of the label parameter for the mkfs program, defaults to -L
 dbstrp_label_option:
@@ -96,3 +105,9 @@ pseudo_fs:
   - dev
   - dev/pts
   - run/udev
+
+# Do not touch these - they are automatically generated
+_target_devices: []
+_devices_used: []
+_mountlist: []
+_encrypt_targets: {}
