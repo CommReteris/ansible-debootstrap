@@ -43,10 +43,6 @@
     set_fact:
       _install: "{{ install_packages + required_packages['all'] + required_packages[release] }}"
 
-  - debug:
-      msg: "Going to install: {{ _install|join(', ') }}"
-      verbosity: 2
-
   rescue:
   - name: cleanup
     include_tasks: cleanup.yml
@@ -65,7 +61,7 @@
       group: root
     when: release in ["xenial", "artful", "bionic", "focal", "hirsuite"]
 
-  - name: update sources.list
+  - name: Update sources.list
     template:
       src: "sources_debian.list"
       dest: "{{ _bootstrap_target }}/etc/apt/sources.list"
@@ -74,17 +70,17 @@
       group: root
     when: release in ["stretch", "buster", "sid", "bullseye"]
 
-  - name: update sources
+  - name: Update sources
     command: "chroot {{ _bootstrap_target }} apt update"
 
   - name: apt full-upgrade
     command: "chroot {{ _bootstrap_target }} apt full-upgrade -y"
 
   # cut down on fsync
-  - name: install eatmydata
+  - name: Install eatmydata
     command: "chroot {{ _bootstrap_target }} apt-get -y install eatmydata"
 
-  - name: allow ppa use
+  - name: Allow ppa use
     command: "chroot {{ _bootstrap_target }} eatmydata apt-get -y install software-properties-common"
     when: >-
       install_ppa|default([])|length > 0 or
@@ -94,7 +90,7 @@
         and zfs_pool is defined
       and dbstrp_zfs_backport|default(False))
 
-  - name: install ZFS ppa for 0.8
+  - name: Install ZFS ppa for 0.8
     command: >-
       chroot {{ _bootstrap_target }} eatmydata
       add-apt-repository -yu ppa:jonathonf/zfs
@@ -110,17 +106,37 @@
       cp /etc/hostid {{ _bootstrap_target }}/etc/
     when: zfs_pool is defined
 
+  - name: register hostid
+    command: cat /etc/hostid
+    register: _hostid
+
   # A bit ineffective, since we'll be upgrading the cache every time.
-  - name: enable ppa
+  - name: Enable ppa
     shell: "chroot  {{ _bootstrap_target }} eatmydata add-apt-repository -yu {{ item }}"
     with_items: "{{ install_ppa|default([]) }}"
     when: install_ppa is defined and install_ppa|length > 0
 
+  - name: install packages requiring no_recommends
+    command: "chroot {{ _bootstrap_target }} eatmydata apt-get -y install --no-install-recommends \
+      {{ no_recommends.all + no_recommends['release'] | join(' ') }}"
+
   - name: install packages
-    command: "chroot {{ _bootstrap_target }} eatmydata apt-get -y install {{ _install|join(' ') }}"
+    command: "chroot {{ _bootstrap_target }} eatmydata apt-get -y  install {{ _install|join(' ') }}"
 
   - name: clean up packages
     command: "chroot {{ _bootstrap_target }} eatmydata apt-get clean"
+
+  - name: Configure locales 1
+    command: "chroot {{ _bootstrap_target }} locale-gen en_US.UTF-8 {{ locale }}"
+
+  - name: Configure locales 2
+    command: "chroot {{ _bootstrap_target }} echo 'LANG={{ locale }}' > /etc/default/locale"
+
+  - name: Configure timezone 1
+    command: "ln -fs /usr/share/zoneinfo/{{ timezone }} /etc/localtime"
+
+  - name: Configure timezone 2
+    command: "dpkg-reconfigure -f noninteractive tzdata"
 
   environment: "{{ _apt_env }}"
 

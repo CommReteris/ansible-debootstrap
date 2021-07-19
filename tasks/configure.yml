@@ -60,17 +60,6 @@
     - "'mount' in item.value"
   loop: "{{ _tgt_devices|dict2items }}"
 
-- name: Configure ZFS legacy mounts
-  mount:
-    fstype: zfs
-    opts: defaults
-    path: "{{ item.mount }}"
-    src: "{{ item.path }}"
-    fstab: "{{ _tgt_root }}/etc/fstab"
-    state: present
-  when: "'mount' in item"
-  loop: "{{ zfs_fs }}"
-
 - name: Configure NFS
   mount:
     fstype: nfs
@@ -104,6 +93,72 @@
     content: REMAKE_INITRD=yes
     mode: 0o644
 
+- name: Set kexec to load
+  replace:
+    path: /etc/default/kexec
+    regexp: '^LOAD_KEXEC=false,'
+    replace: 'LOAD_KEXEC=true,'
+
+- name: Copy zfs passphrase to file
+  copy:
+    dest: "{{ _tgt_root }}/etc/zfs/{{ item.poolname }}.key"
+    content: "{{ item.passphrase }}"
+    mode: '600'
+  loop: "{{ zfs_pool }}"
+
+- name: Change ZFS pool to look for key file
+  command: >
+    "zfs change-key -o keylocation=file:///etc/zfs{{ item.poolname }}.key -o keyformat=passphrase {{ item.poolname }}"
+  loop: "{{ zfs_pool }}"
+
+- name: Set zfs commandline
+  command: 'zfs set org.zfsbootmenu:commandline="spl_hostid=\{{ _hostid.stdout }} ro quiet" {{ item.poolname }}/ROOT'
+
+- name: git clone zfsbootmenu
+  git:
+    repo: https://github.com/zbm-dev/zfsbootmenu.git
+    dest: {{ _tgt_root}}/root/zfsbootmenu
+
+- name: Compile zfsbootmenu
+  shell: "chroot {{ _tgt_root }} && cd /root/zfsbootmenu && make install"
+
+- name: Configure zfsbootmenu
+  copy:
+    content: |
+      Global:
+        ManageImages: true
+        BootMountPoint: /boot/efi
+        DracutConfDir: /etc/zfsbootmenu/dracut.conf.d
+      Components:
+        ImageDir: /boot/efi/EFI/debian
+        Versions: false
+        Enabled: true
+        syslinux:
+          Config: /boot/syslinux/syslinux.cfg
+          Enabled: false
+      EFI:
+        ImageDir: /boot/efi/EFI/debian
+        Versions: false
+        Enabled: false
+      Kernel:
+        CommandLine: ro quiet loglevel=0
+    dest: "{{ _tgt_root }}/etc/zfsbootmenu/config.yaml"
+    owner: root
+    group: root
+    mode: 0o644
+
+- name: Omit systemd dracut modules to prevent ZBM boot breaking
+  copy:
+    content: |
+      omit_dracutmodules+=" systemd systemd-initrd dracut-systemd "
+    dest: "{{ _tgt_root }}/etc/zfsbootmenu/dracut.conf.d/zfsbootmenu.conf"
+    owner: root
+    group: root
+    mode: 0o644
+
+- name: Download & build Yaml PP Perl module
+  command: "chroot {{ _tgt_root }} cpan 'YAML::PP'"
+
 - name: Create key to sign kernel modules
   command: |
     chroot {{ _tgt_root }} openssl \
@@ -118,35 +173,20 @@
     creates: /root/mok.priv
 
 - name: update initramfs
-  command: chroot {{ _tgt_root }} update-initramfs -c -k all
+  command: "chroot {{ _tgt_root }} update-initramfs -c -k all"
 
-- name: install boot loader (grub-efi)
-  command: >
-    chroot {{ _tgt_root }} grub-install \
-    --target=x86_64-efi \
-    --efi-directory=/boot/efi \
-    --force-extra-removable \
-    --bootloader-id=debian \
-    --recheck \
-    --no-floppy
+- name: Generate ZFSBootMenu
+  command: "chroot {{ _tgt_root }} generate-zbm"
 
-- name: Ensure /boot/default/grub exists
-  file:
-    dest: "{{ _tgt_root }}/etc/default/grub"
-    state: touch
-    mode: '644'
-
-- name: Set kernel commandline defaults
-  lineinfile:
-    path: "{{ _tgt_root }}/etc/default/grub"
-    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
-    line: 'GRUB_CMDLINE_LINUX_DEFAULT="{{ kernel_cmdline }}"'
-
-- name: Disable grub-probe
-  command: chroot {{ _tgt_root }} echo 'GRUB_DISABLE_OS_PROBER=true' >> /etc/default/grub
-
-- name: Update grub
-  command: chroot {{ _tgt_root }} update-grub
+- name: Create refind_linux.conf
+  copy:
+    content: |
+      "Boot default"  "zfsbootmenu:POOL=$RPOOL zbm.import_policy=hostid zbm.set_hostid zbm.timeout=15 ro quiet loglevel=0"
+      "Boot to menu"  "zfsbootmenu:POOL=$RPOOL zbm.import_policy=hostid zbm.set_hostid zbm.show ro quiet loglevel=0"
+    dest: "{{ _tgt_root }}/boot/efi/EFI/debian/refind_linux.conf"
+    owner: root
+    group: root
+    mode: 0o644
 
 - name: set root password
   command: >

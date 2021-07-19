@@ -119,11 +119,18 @@
     group: root
   when: release in ["stretch", "buster", "sid", "bullseye"]
 
+- name: Install global dependencies requiring no recommends
+  apt:
+    name: "{{ no_recommends.all + no_recommends[release] }}"
+    state: latest
+    update_cache: yes
+    install_recommends: no
+
 - name: Install global dependencies
   apt:
     name: "{{ dependencies.global }}"
     state: latest
-    update_cache: yes
+    update_cache: no
 
 - name: install zfs dependencies
   apt:

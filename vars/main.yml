@@ -1,4 +1,16 @@
 ---
+mirrors:
+  stretch: http://httpredir.debian.org/debian
+  buster: http://httpredir.debian.org/debian
+  bullseye: http://httpredir.debian.org/debian
+  xenial: http://archive.ubuntu.com/ubuntu
+  bionic: http://archive.ubuntu.com/ubuntu
+  eoan: http://archive.ubuntu.com/ubuntu
+  focal: http://archive.ubuntu.com/ubuntu
+  groovy: http://archive.ubuntu.com/ubuntu
+  hirsuite: http://archive.ubuntu.com/ubuntu
+
+supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsuite']
 
 dependencies:
   global:
@@ -19,42 +31,30 @@ dependencies:
   md:
     - mdadm
   zfs:
+    - dpkg-dev
+    - dracut-core
+    - fzf
+    - git
+    - kexec-tools
+    - libboolean-perl
+    - libconfig-inifiles-perl
+    - libsort-versions-perl
+    - mbuffer
+    - refind
+    - systemd-sysv
+    - zfs-dkms  # for ZFS 0.8 using the PPA
+    - zfs-initramfs
+    - zfs-zed
+    - zfsutils-linux
+
+no_recommends:
+  all:
     - "linux-headers-{{ ansible_kernel }}"
     - linux-headers-generic
     - dkms
-    - zfsutils-linux
-    - zfs-initramfs
-    - zfs-zed
-    - zfs-dkms  # for ZFS 0.8 using the PPA
-
-mirrors:
-  stretch: http://httpredir.debian.org/debian
-  buster: http://httpredir.debian.org/debian
-  bullseye: http://httpredir.debian.org/debian
-  xenial: http://archive.ubuntu.com/ubuntu
-  bionic: http://archive.ubuntu.com/ubuntu
-  eoan: http://archive.ubuntu.com/ubuntu
-  focal: http://archive.ubuntu.com/ubuntu
-  groovy: http://archive.ubuntu.com/ubuntu
-  hirsuite: http://archive.ubuntu.com/ubuntu
-
-supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsuite']
-
-required_packages:
-  all:
-    - console-setup
-    - grub-efi-amd64
-    - grub-efi-amd64-signed
-    - shim-signed
-    - openssh-server
-    - locales
-    - python3-minimal
-    - sudo
   hirsuite:
-    - python-minimal
     - linux-image-generic
   bionic:
-    - python-minimal
     - linux-image-generic
   eoan:
     - linux-image-generic
@@ -63,17 +63,39 @@ required_packages:
   groovy:
     - linux-image-generic
   jessie:
-    - python-minimal
     - linux-image-amd64
   stretch:
-    - python-minimal
     - linux-image-amd64
   buster:
-    - python-minimal
     - linux-image-amd64
   bullseye:
-    - python2-minimal
     - linux-image-amd64
+
+required_packages:
+  all:
+    - openssh-server
+    - locales
+    - python3-minimal
+    - sudo
+  hirsuite:
+    - python-minimal
+  bionic:
+    - python-minimal
+  eoan:
+    - ""
+  focal:
+    - ""
+  groovy:
+    - ""
+  jessie:
+    - python-minimal
+  stretch:
+    - python-minimal
+  buster:
+    - python-minimal
+  bullseye:
+    - python2-minimal
+
 
 _apt_env:
   DEBIAN_FRONTEND: noninteractive

@@ -1,10 +1,14 @@
 ---
 
 - name: create zpools
-  command: >
-    zpool create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
-    {% if 'options' in item %}-O {{ item['fs_options']|default([])|join(' -O ') }}{% endif %}
-    -R {{ _tgt_root }} {{ item['poolname']|default('rpool') }} {{ item['devices']|join(' ') }}
+  expect:
+    command: >
+      zpool create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
+      {% if 'options' in item %}-O {{ item['fs_options']|default([])|join(' -O ') }}{% endif %}
+      -R {{ _tgt_root }} {{ item['poolname']|default('rpool') }} {{ item['devices']|join(' ') }}
+    responses:
+      Enter passphrase: {{ item.passphrase }}
+      Re-Enter passphrase: {{ item.passphrase }}
   with_items: "{{ zfs_pool }}"
   register: _zpool
 
@@ -13,6 +17,9 @@
     zfs create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
     {{ item['path'] }}
   with_items: "{{ zfs_fs }}"
+
+- name: Set bootfs
+  command: "zpool set bootfs={{ zfs_root }} rpool"
 
 - name: add dependencies to install list
   set_fact:
