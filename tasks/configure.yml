@@ -1,4 +1,19 @@
 ---
+- name: Copy locale_prep script
+  copy:
+    content: |
+      echo "America/New_York" > /etc/timezone && \
+        dpkg-reconfigure -f noninteractive tzdata && \
+        sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+        sed -i -e 's/# en_GB.UTF-8 UTF-8/en_GB.UTF-8 UTF-8/' /etc/locale.gen && \
+        echo 'LANG="en_US.UTF-8"'>/etc/default/locale && \
+        dpkg-reconfigure --frontend=noninteractive locales && \
+        update-locale LANG=en_US.UTF-8
+    dest: "{{ _tgt_root }}/root/locale_prep.sh"
+    mode: "775"
+
+- name: Generate & configure locales
+  command: "chroot {{ _tgt_root }} /root/locale_prep.sh"
 
 - name: find out uuid for target devices for fstab / crypttab
   command: "lsblk -nJ -o NAME,UUID,PARTUUID {{ _tgt_devices.keys()|join(' ') }}"
@@ -95,7 +110,7 @@
 
 - name: Set kexec to load
   replace:
-    path: /etc/default/kexec
+    path: "{{ _tgt_root }}/etc/default/kexec"
     regexp: '^LOAD_KEXEC=false,'
     replace: 'LOAD_KEXEC=true,'
 
@@ -105,22 +120,111 @@
     content: "{{ item.passphrase }}"
     mode: '600'
   loop: "{{ zfs_pool }}"
+  no_log: true
 
 - name: Change ZFS pool to look for key file
   command: >
-    "zfs change-key -o keylocation=file:///etc/zfs{{ item.poolname }}.key -o keyformat=passphrase {{ item.poolname }}"
+    chroot {{ _tgt_root }} zfs change-key \
+      -o keylocation=file:///etc/zfs/{{ item.poolname }}.key \
+      -o keyformat=passphrase \
+      {{ item.poolname }}
   loop: "{{ zfs_pool }}"
+  no_log: true
 
 - name: Set zfs commandline
-  command: 'zfs set org.zfsbootmenu:commandline="spl_hostid=\{{ _hostid.stdout }} ro quiet" {{ item.poolname }}/ROOT'
+  command: >
+    chroot {{ _tgt_root }} \
+      zfs set org.zfsbootmenu:commandline="spl_hostid=\{{ _hostid.stdout }} ro quiet" {{ item.poolname }}/ROOT
+  loop: "{{ zfs_pool }}"
+  no_log: true
 
-- name: git clone zfsbootmenu
-  git:
-    repo: https://github.com/zbm-dev/zfsbootmenu.git
-    dest: {{ _tgt_root}}/root/zfsbootmenu
+- name: Ensure zfs-list.cache directory exists
+  file:
+    path: "{{ _tgt_root }}/etc/zfs/zfs-list.cache"
+    state: directory
+    owner: root
+    group: root
+    mode: '755'
 
-- name: Compile zfsbootmenu
-  shell: "chroot {{ _tgt_root }} && cd /root/zfsbootmenu && make install"
+- name: Ensure zfs-list.cache/{{ item.poolname }} exists
+  file:
+    path: "{{ _tgt_root }}/etc/zfs/zfs-list.cache/{{ item.poolname }}"
+    state: touch
+    owner: root
+    group: root
+    mode: '755'
+  loop: "{{ zfs_pool }}"
+
+- name: Copy fix_zfs_mount_order to remote
+  copy:
+    content: |
+      zed -F &
+      sleep 2
+      cat /etc/zfs/zfs-list.cache/{{ item.poolname }}
+      while [ ! -s /etc/zfs/zfs-list.cache/{{ item.poolname }} ]
+      do
+        zfs set canmount=noauto {{ zfs_root }}
+        sleep 1
+      done
+      pkill -9 "zed*"
+      ## sed -Ei "s|{{ _tgt_root }}/?|/|" /etc/zfs/zfs-list.cache/{{ item.poolname }}
+    dest: "{{ _tgt_root }}/root/fix_{{ item.poolname }}_mount_order.sh"
+    mode: "775"
+  loop: "{{ zfs_pool }}"
+  no_log: true
+
+- name: Run fix_{{ item.poolname }}_mount_order.sh
+  command: "chroot {{ _tgt_root }} /root/fix_{{ item.poolname }}_mount_order.sh"
+  loop: "{{ zfs_pool }}"
+  no_log: true
+
+- name: fix mounts
+  replace:
+    path: "{{ _tgt_root }}/etc/zfs/zfs-list.cache/{{ item.poolname }}"
+    regexp: '^{{ _tgt_root }}/'
+    replace: '/'
+  loop: "{{ zfs_pool }}"
+  no_log: true
+
+- name: Get information about latest zfsbootmanager release
+  uri:
+    url: https://api.github.com/repos/zbm-dev/zfsbootmenu/releases/latest
+    return_content: true
+  register: _zbm_latest
+
+- name: Create directory for zfsbootmanager repo
+  file:
+    path: "{{ _tgt_root}}/root/zfsbootmenu"
+    state: directory
+    owner: root
+    group: root
+    mode: '755'
+
+- name: Download and extract zfsbootmenu release
+  unarchive:
+    dest: "{{ _tgt_root}}/root/zfsbootmenu"
+    owner: root
+    group: root
+    remote_src: yes
+    src: "{{ _zbm_latest.json.tarball_url }}"
+    validate_certs: no
+    extra_opts: [--strip-components=1]
+
+- name: Compile & install zfsbootmenu
+  shell: "chroot {{ _tgt_root }} make -C /root/zfsbootmenu install"
+
+- name: Configure dracut
+  copy:
+    content: |
+      hostonly="no"
+      nofsck="yes"
+      add_dracutmodules+=" zfs "
+      omit_dracutmodules+=" btrfs "
+      install_items+=" /etc/zfs/zroot.key "
+    dest: "{{ _tgt_root }}/etc/dracut.conf.d/100-zol.conf"
+    owner: root
+    group: root
+    mode: 0o644
 
 - name: Configure zfsbootmenu
   copy:
@@ -148,16 +252,20 @@
     mode: 0o644
 
 - name: Omit systemd dracut modules to prevent ZBM boot breaking
+  lineinfile:
+    path: "{{ _tgt_root }}/etc/zfsbootmenu/dracut.conf.d/zfsbootmenu.conf"
+    regexp: '^omit_dracutmodules+='
+    line: 'omit_dracutmodules+=" btrfs resume systemd systemd-initrd dracut-systemd "'
+    state: present
+
+- name: Omit nouveau drives
   copy:
     content: |
-      omit_dracutmodules+=" systemd systemd-initrd dracut-systemd "
-    dest: "{{ _tgt_root }}/etc/zfsbootmenu/dracut.conf.d/zfsbootmenu.conf"
+      omit_drivers+=" nouveau "
+    dest: "{{ _tgt_root }}/etc/zfsbootmenu/dracut.conf.d/disable_nouveau.conf"
     owner: root
     group: root
     mode: 0o644
-
-- name: Download & build Yaml PP Perl module
-  command: "chroot {{ _tgt_root }} cpan 'YAML::PP'"
 
 - name: Create key to sign kernel modules
   command: |
@@ -172,8 +280,13 @@
   args:
     creates: /root/mok.priv
 
+- name: Download & build Yaml PP Perl module
+  command: "chroot {{ _tgt_root }} cpan 'YAML::PP'"
+
 - name: update initramfs
-  command: "chroot {{ _tgt_root }} update-initramfs -c -k all"
+  command: "{{ item }}"
+  loop:
+    - "chroot {{ _tgt_root }} update-initramfs -c -k all"
 
 - name: Generate ZFSBootMenu
   command: "chroot {{ _tgt_root }} generate-zbm"
@@ -181,12 +294,14 @@
 - name: Create refind_linux.conf
   copy:
     content: |
-      "Boot default"  "zfsbootmenu:POOL=$RPOOL zbm.import_policy=hostid zbm.set_hostid zbm.timeout=15 ro quiet loglevel=0"
-      "Boot to menu"  "zfsbootmenu:POOL=$RPOOL zbm.import_policy=hostid zbm.set_hostid zbm.show ro quiet loglevel=0"
+      "Boot default"  "zfsbootmenu:POOL={{ item.poolname }} zbm.import_policy=hostid zbm.set_hostid zbm.timeout=15 ro quiet loglevel=0"
+      "Boot to menu"  "zfsbootmenu:POOL={{ item.poolname }} zbm.import_policy=hostid zbm.set_hostid zbm.show ro quiet loglevel=0"
     dest: "{{ _tgt_root }}/boot/efi/EFI/debian/refind_linux.conf"
     owner: root
     group: root
     mode: 0o644
+  loop: "{{ zfs_pool }}"
+  # no_log: true
 
 - name: set root password
   command: >

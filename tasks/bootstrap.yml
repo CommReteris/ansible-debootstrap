@@ -43,6 +43,10 @@
     set_fact:
       _install: "{{ install_packages + required_packages['all'] + required_packages[release] }}"
 
+  - name: build list of packages to install with no_recommends
+    set_fact:
+      _install_no_recommends: "{{ no_recommends['all'] + no_recommends[release] }}"
+
   rescue:
   - name: cleanup
     include_tasks: cleanup.yml
@@ -70,11 +74,11 @@
       group: root
     when: release in ["stretch", "buster", "sid", "bullseye"]
 
-  - name: Update sources
-    command: "chroot {{ _bootstrap_target }} apt update"
-
-  - name: apt full-upgrade
-    command: "chroot {{ _bootstrap_target }} apt full-upgrade -y"
+  - name: apt update & upgrade
+    command: "{{ item }}"
+    loop:
+      - "chroot {{ _bootstrap_target }} apt update"
+      - "chroot {{ _bootstrap_target }} apt full-upgrade -y"
 
   # cut down on fsync
   - name: Install eatmydata
@@ -107,7 +111,7 @@
     when: zfs_pool is defined
 
   - name: register hostid
-    command: cat /etc/hostid
+    command: echo $(hostid)
     register: _hostid
 
   # A bit ineffective, since we'll be upgrading the cache every time.
@@ -116,27 +120,29 @@
     with_items: "{{ install_ppa|default([]) }}"
     when: install_ppa is defined and install_ppa|length > 0
 
-  - name: install packages requiring no_recommends
-    command: "chroot {{ _bootstrap_target }} eatmydata apt-get -y install --no-install-recommends \
-      {{ no_recommends.all + no_recommends['release'] | join(' ') }}"
-
   - name: install packages
-    command: "chroot {{ _bootstrap_target }} eatmydata apt-get -y  install {{ _install|join(' ') }}"
+    command: "{{ item }}"
+    loop:
+      - "chroot {{ _bootstrap_target }} eatmydata apt-get -y install --no-install-recommends \
+          {{ _install_no_recommends | join(' ') }}"
+      - "chroot {{ _bootstrap_target }} eatmydata apt-get -y  install {{ _install | join(' ') }}"
+      - "chroot {{ _bootstrap_target }} eatmydata apt-get clean"
 
-  - name: clean up packages
-    command: "chroot {{ _bootstrap_target }} eatmydata apt-get clean"
+  - name: Generate & configure locales
+    command: "{{ item }}"
+    loop:
+      - "chroot {{ _tgt_root }} locale-gen {{ locale }}"
+      - "chroot {{ _tgt_root }} echo 'LANG={{ locale }}' > /etc/default/locale"
+      - "chroot {{ _tgt_root }} dpkg-reconfigure locales"
+      - "chroot {{ _tgt_root }} update-locale {{ locale }}"
 
-  - name: Configure locales 1
-    command: "chroot {{ _bootstrap_target }} locale-gen en_US.UTF-8 {{ locale }}"
+  - name: Link localtime to specified timezone
+    file:
+      path: "{{ _tgt_root }}/etc/localtime"
+      src: "{{ _tgt_root }}/usr/share/zoneinfo/{{ timezone }}"
 
-  - name: Configure locales 2
-    command: "chroot {{ _bootstrap_target }} echo 'LANG={{ locale }}' > /etc/default/locale"
-
-  - name: Configure timezone 1
-    command: "ln -fs /usr/share/zoneinfo/{{ timezone }} /etc/localtime"
-
-  - name: Configure timezone 2
-    command: "dpkg-reconfigure -f noninteractive tzdata"
+  - name: Run dpkg-reconfigure tzdata
+    command: "chroot {{ _tgt_root }} dpkg-reconfigure tzdata"
 
   environment: "{{ _apt_env }}"
 
@@ -162,3 +168,8 @@
       dest: "{{ _bootstrap_target }}"
 
   when: use_tmpfs
+
+- name: Snapshot unconfigured filesystems
+  zfs:
+    name: "{{ zfs_root }}@bootstrap"
+    state: present

@@ -1,15 +1,20 @@
 ---
+- name: Remove any residual directories in dbstrp_mountpoint
+  file:
+    path: "{{ dbstrp_mountpoint }}"
+    state: absent
 
 - name: create zpools
   expect:
     command: >
       zpool create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
       {% if 'options' in item %}-O {{ item['fs_options']|default([])|join(' -O ') }}{% endif %}
-      -R {{ _tgt_root }} {{ item['poolname']|default('rpool') }} {{ item['devices']|join(' ') }}
+      -R {{ _tgt_root }} {{ item['poolname']|default('rpool') }} {{ item.mode }} {{ item['devices']|join(' ') }}
     responses:
-      Enter passphrase: {{ item.passphrase }}
-      Re-Enter passphrase: {{ item.passphrase }}
-  with_items: "{{ zfs_pool }}"
+      Enter passphrase: "{{ item.passphrase }}"
+      Re-enter passphrase: "{{ item.passphrase }}"
+  loop: "{{ zfs_pool }}"
+  # no_log: true
   register: _zpool
 
 - name: create zfs filesystems

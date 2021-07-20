@@ -56,8 +56,6 @@ one ;) )**
 `use_efi`: In case the system supports UEFI, "grub-efi" will be installed on
 te target system, otherwise "grub-pc" (**default**: *yes*). This requires a
 VFAT partition available at /boot/efi.  
-`kernel_cmdline`: Anything you need/want to pass to the kernel (**default**:
-provided by distro)  
 `layout`: Dictionary of partitions / devices (**required**, see below)  
 `md`: List of DM-RAID devices (see below)  
 `lvm`: List of LVM volumes (see below)  

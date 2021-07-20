@@ -6,12 +6,25 @@
     state: unmounted
   with_items: "{{ pseudo_fs|reverse }}"
 
-- name: Ensure {{ dbstrp_mountpoint }}/boot/efi is not mounted
+- name: Ensure /boot/efi is not mounted
   ansible.posix.mount:
-    path: "{{ dbstrp_mountpoint }}/boot/efi"
+    path: "{{ item }}"
     state: unmounted
+  loop:
+    - "{{ dbstrp_mountpoint }}/boot/efi"
+    - "/boot/efi"
 
 - name: Check for mounted targets
+  command: mount
+  register: _existing_mounts
+
+- name: Unmount any zfs mounts
+  command: zfs umount -f -a
+  when:
+    - "dbstrp_mountpoint in _existing_mounts.stdout"
+    - "'type zfs' in _existing_mounts.stdout"
+
+- name: Check again for mounted targets
   command: mount
   register: _existing_mounts
 
@@ -24,11 +37,6 @@
   when:
     - "dbstrp_mountpoint in _existing_mounts.stdout"
     - "'type zfs' in _existing_mounts.stdout"
-
-- name: Remove any residual directories in {{ dbstrp_mountpoint }}
-  file:
-    path: "{{ dbstrp_mountpoint }}"
-    state: absent
 
 - name: Gather facts about ZFS pools
   community.general.zpool_facts: properties='name'

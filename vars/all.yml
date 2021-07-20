@@ -23,6 +23,9 @@ dependencies:
     - eatmydata
     - dosfstools
     - openssl
+    - locales
+    - console-setup
+    - ca-certificates
   encryption:
     - cryptsetup
   lvm:
@@ -40,6 +43,7 @@ dependencies:
     - libconfig-inifiles-perl
     - libsort-versions-perl
     - mbuffer
+    - python3-pexpect
     - refind
     - systemd-sysv
     - zfs-dkms  # for ZFS 0.8 using the PPA
@@ -98,7 +102,13 @@ required_packages:
 
 
 _apt_env:
+  TERM: linux
   DEBIAN_FRONTEND: noninteractive
+  DEBCONF_NONINTERACTIVE_SEEN: true
+  LANG: en_US.UTF-8
+  LANGUAGE: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+  LC_COLLATE: C
 
 dbstrp_mkfs_defaults:
   ext4: -f -b 4096
@@ -127,6 +137,9 @@ pseudo_fs:
   - dev
   - dev/pts
   - run/udev
+
+# use efi?
+use_efi: yes
 
 # Do not touch these - they are automatically generated
 _target_devices: []

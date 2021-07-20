@@ -1,0 +1,79 @@
+---
+
+# add more sources for apt
+- name: update sources.list
+  template:
+    src: "sources_ubuntu.list"
+    dest: "/etc/apt/sources.list"
+    mode: "0644"
+    owner: root
+    group: root
+  when: release in ["xenial", "artful", "bionic", "focal", "hirsuite"]
+
+- name: install ZFS ppa for bionic
+  apt_repository:
+    repo: ppa:jonathonf/zfs
+  register: _dbstrp_zfs_backport_repo
+  when: >-
+    ansible_distribution == "Ubuntu"
+    and ansible_distribution_release in ["bionic", "disco"]
+    and zfs_pool is defined
+    and dbstrp_zfs_backport|default(False)
+
+- name: update sources.list
+  template:
+    src: "sources_debian.list"
+    dest: "/etc/apt/sources.list"
+    mode: "0644"
+    owner: root
+    group: root
+  when: release in ["stretch", "buster", "sid", "bullseye"]
+
+- name: Install global dependencies requiring no recommends
+  apt:
+    name: "{{ no_recommends.all + no_recommends[release] }}"
+    state: latest
+    update_cache: yes
+    install_recommends: no
+
+- name: Install global dependencies
+  apt:
+    name: "{{ dependencies.global }}"
+    state: latest
+    update_cache: no
+
+- name: install zfs dependencies
+  apt:
+    name: "{{ dependencies.zfs }}"
+    state: latest
+
+# In some cases the old module is still loaded, this will unload and reload.
+- block:
+    - name: stop zed
+      systemd:
+        name: zfs-zed.service
+        state: stopped
+
+    - name: unload ZFS modules
+      modprobe:
+        name: "zfs"
+        state: "absent"
+
+    - name: load ZFS module
+      modprobe:
+        name: zfs
+        state: present
+
+  when: dbstrp_zfs_backport|default(False)
+
+# This may fail when buster-backports isn't enabled as repository, however
+# this is preferable to debootstrap failing later. This works on the Hetzner
+# rescue system which is a common use case for this author
+- name: Install debootstrap from buster-backports when on buster and eoan
+  apt:
+    name: debootstrap
+    state: latest
+    default_release: buster-backports
+    cache_valid_time: "{{ debian_cache_valid_time|default(7200) }}"
+    update_cache: yes
+  when: ansible_distribution_release == 'buster' and release == 'eoan'
