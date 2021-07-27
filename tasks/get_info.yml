@@ -44,13 +44,12 @@
   loop: "{{ layout | zip(device_attrs) | list }}"
 
 - name: Check EFI system
-  when: use_efi
   stat:
     path: /sys/firmware/efi
   register: _stat_efi
 
 - name: Check EFI mount point
-  when: use_efi and _stat_efi.stat.exists
+  when: _stat_efi.stat.exists
   set_fact:
     _efi_mountpoint: "{{ layout
       | selectattr('partitions', 'defined')
@@ -62,7 +61,7 @@
       | first
       | default(False) }}"
 
-- name: Disable efi if there is no EFI partition
+- name: Fail if there is no EFI partition
   ansible.builtin.fail:
   when: _efi_mountpoint|default(False) == False
 

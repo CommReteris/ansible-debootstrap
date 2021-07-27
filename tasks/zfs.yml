@@ -26,6 +26,34 @@
 - name: Set bootfs
   command: "zpool set bootfs={{ zfs_root }} rpool"
 
-- name: add dependencies to install list
-  set_fact:
-    install_packages: "{{ install_packages + dependencies['zfs'] }}"
+- name: Gather facts about ZFS pools
+  community.general.zpool_facts: properties='name'
+
+- name: Unmount automounting zfs filesystems
+  command: zfs umount -a
+
+- name: Gather facts about ZFS filesystems
+  community.general.zfs_facts:
+    dataset: "{{ item.name }}"
+    recurse: true
+  loop: "{{ ansible_zfs_pools }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Unmount noauto zfs filesystems
+  command: zfs unmount {{ item.name }}
+  when: "item.mounted == 'yes'"
+  loop: "{{ ansible_zfs_datasets }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Export ZFS pools
+  command: zpool export {{ item.name }}
+  loop: '{{ ansible_zfs_pools }}'
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Remove any residual directories in dbstrp_mountpoint
+  file:
+    path: "{{ dbstrp_mountpoint }}"
+    state: absent

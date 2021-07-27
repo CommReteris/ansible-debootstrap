@@ -29,23 +29,20 @@
     group: root
   when: release in ["stretch", "buster", "sid", "bullseye"]
 
-- name: Install global dependencies requiring no recommends
+- name: Filter dependencies to install with no_recommends
+  set_fact:
+    _dependencies_no_recommends: "{{ dependencies | intersect(no_recommends) }}"
+
+- name: Filter dependencies to install normally
+  set_fact:
+    _dependencies: "{{ dependencies | difference(_dependencies_no_recommends) }}"
+
+- name: Install dependencies requiring no recommends
   apt:
-    name: "{{ no_recommends.all + no_recommends[release] }}"
+    name: "{{ _dependencies_no_recommends }}"
     state: latest
     update_cache: yes
     install_recommends: no
-
-- name: Install global dependencies
-  apt:
-    name: "{{ dependencies.global }}"
-    state: latest
-    update_cache: no
-
-- name: install zfs dependencies
-  apt:
-    name: "{{ dependencies.zfs }}"
-    state: latest
 
 # In some cases the old module is still loaded, this will unload and reload.
 - block:
@@ -65,6 +62,12 @@
         state: present
 
   when: dbstrp_zfs_backport|default(False)
+
+- name: Install dependencies
+  apt:
+    name: "{{ _dependencies }}"
+    state: latest
+    update_cache: no
 
 # This may fail when buster-backports isn't enabled as repository, however
 # this is preferable to debootstrap failing later. This works on the Hetzner

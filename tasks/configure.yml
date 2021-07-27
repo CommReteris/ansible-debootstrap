@@ -1,40 +1,6 @@
 ---
-- name: Copy locale_prep script
-  copy:
-    content: |
-      echo "America/New_York" > /etc/timezone && \
-        dpkg-reconfigure -f noninteractive tzdata && \
-        sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
-        sed -i -e 's/# en_GB.UTF-8 UTF-8/en_GB.UTF-8 UTF-8/' /etc/locale.gen && \
-        echo 'LANG="en_US.UTF-8"'>/etc/default/locale && \
-        dpkg-reconfigure --frontend=noninteractive locales && \
-        update-locale LANG=en_US.UTF-8
-    dest: "{{ _tgt_root }}/root/locale_prep.sh"
-    mode: "775"
-
-- name: Generate & configure locales
-  command: "chroot {{ _tgt_root }} /root/locale_prep.sh"
-
-- name: find out uuid for target devices for fstab / crypttab
-  command: "lsblk -nJ -o NAME,UUID,PARTUUID {{ _tgt_devices.keys()|join(' ') }}"
-  register: _lsblk
-
-- set_fact:
-    _tmp: '{{ _lsblk.stdout|from_json }}'
-
-- name: add uuid to _tgt_devices
-  set_fact:
-    _tgt_devices: >
-      {{ _tgt_devices|combine({'/dev/' + item.name: _tgt_devices['/dev/'+ item.name]|default({})|combine({'uuid': item.uuid })}) }}
-  with_items: "{{ _tmp['blockdevices'] }}"
-  when: item.uuid is defined and _tgt_devices['/dev/' + item.name] is defined
-
-- name: add uuid to _tgt_devices (device mapper)
-  set_fact:
-    _tgt_devices: >
-      {{ _tgt_devices|combine({'/dev/mapper/' + item.name: _tgt_devices['/dev/mapper/'+ item.name]|default({})|combine({'uuid': item.uuid })}) }}
-  with_items: "{{ _tmp['blockdevices'] }}"
-  when: item.uuid is defined and _tgt_devices['/dev/mapper/' + item.name] is defined
+- name: Ensure efivars is mounted in chroot
+  command: "chroot {{ _tgt_root }} mount -t efivarfs efivarfs /sys/firmware/efi/efivars"
 
 - name: Set the hostname
   copy:
@@ -57,23 +23,8 @@
     group: "{{ item.group|default('root') }}"
     mode: "{{ item.mode|default('0644') }}"
   with_items:
-  - { src: 'crypttab', dest: 'crypttab' }
   - { src: 'interfaces', dest: 'network/interfaces' }
   - { src: 'resolv.conf', dest: 'resolv.conf' }
-
-- name: Configure basic mountpoints
-  mount:
-    fstype: "{{ item.value['fs'] }}"
-    opts: "{{ item.value['mountopts'] | default('defaults') }}"
-    path: "{{ item.value['mount'] }}"
-    src: "{{ 'UUID='+item.value['uuid']  | default(item.key) }}"
-    fstab: "{{ _tgt_root }}/etc/fstab"
-    state: present
-  when:
-    - "not (item.value['encrypt'] | default(False))"
-    - "not item.value['fs'] == 'zfs_member'"
-    - "'mount' in item.value"
-  loop: "{{ _tgt_devices|dict2items }}"
 
 - name: Configure NFS
   mount:
@@ -84,23 +35,6 @@
     fstab: "{{ _tgt_root }}/etc/fstab"
     state: present
   loop: "{{ nfs_servers|subelements('mounts') }}"
-
-- name: Add thin provisoning hook
-  copy:
-    src: "lvm-thin"
-    dest: "{{ _tgt_root }}/etc/initramfs-tools/hooks/lvm-thin"
-    owner: root
-    group: root
-    mode: 0755
-  when: lvm is defined
-
-# In some configurations initramfstools will not correctly detect encrypted root, this
-# forces cryptsetup to be included.
-- name: enforce cryptsetup in initramfs
-  copy:
-    dest: "{{ _tgt_root }}/etc/initramfs-tools/conf.d/cryptsetup"
-    content: "export CRYPTSETUP=y"
-  when: _luksopen is defined and _luksopen.changed
 
 - name: Ensure ZFS update rebuilds all initramfs
   copy:
@@ -113,6 +47,12 @@
     path: "{{ _tgt_root }}/etc/default/kexec"
     regexp: '^LOAD_KEXEC=false,'
     replace: 'LOAD_KEXEC=true,'
+
+- name: Fix mounts in /etc/fstab
+  replace:
+    path: "{{ _tgt_root }}/etc/fstab"
+    regexp: '/mnt/bootstrap/'
+    replace: '/'
 
 - name: Copy zfs passphrase to file
   copy:
@@ -134,55 +74,23 @@
 - name: Set zfs commandline
   command: >
     chroot {{ _tgt_root }} \
-      zfs set org.zfsbootmenu:commandline="spl_hostid=\{{ _hostid.stdout }} ro quiet" {{ item.poolname }}/ROOT
+      zfs set org.zfsbootmenu:commandline="spl_hostid=\{{ _hostid.stdout }} {{ item['zbm_cmdline']|join(' ') }}" {{ item.poolname }}/ROOT
   loop: "{{ zfs_pool }}"
   no_log: true
 
-- name: Ensure zfs-list.cache directory exists
-  file:
-    path: "{{ _tgt_root }}/etc/zfs/zfs-list.cache"
-    state: directory
-    owner: root
-    group: root
-    mode: '755'
-
 - name: Ensure zfs-list.cache/{{ item.poolname }} exists
   file:
-    path: "{{ _tgt_root }}/etc/zfs/zfs-list.cache/{{ item.poolname }}"
+    path: "{{ _tgt_root }}/etc/zfs/{{ item.poolname }}.cache"
     state: touch
     owner: root
     group: root
     mode: '755'
   loop: "{{ zfs_pool }}"
-
-- name: Copy fix_zfs_mount_order to remote
-  copy:
-    content: |
-      zed -F &
-      sleep 2
-      cat /etc/zfs/zfs-list.cache/{{ item.poolname }}
-      while [ ! -s /etc/zfs/zfs-list.cache/{{ item.poolname }} ]
-      do
-        zfs set canmount=noauto {{ zfs_root }}
-        sleep 1
-      done
-      pkill -9 "zed*"
-      ## sed -Ei "s|{{ _tgt_root }}/?|/|" /etc/zfs/zfs-list.cache/{{ item.poolname }}
-    dest: "{{ _tgt_root }}/root/fix_{{ item.poolname }}_mount_order.sh"
-    mode: "775"
-  loop: "{{ zfs_pool }}"
   no_log: true
 
-- name: Run fix_{{ item.poolname }}_mount_order.sh
-  command: "chroot {{ _tgt_root }} /root/fix_{{ item.poolname }}_mount_order.sh"
-  loop: "{{ zfs_pool }}"
-  no_log: true
-
-- name: fix mounts
-  replace:
-    path: "{{ _tgt_root }}/etc/zfs/zfs-list.cache/{{ item.poolname }}"
-    regexp: '^{{ _tgt_root }}/'
-    replace: '/'
+- name: Set zfs cachefile
+  command: >
+    chroot {{ _tgt_root }} zpool set cachefile=/etc/zfs/{{ item.poolname }}.cache {{ item.poolname }}
   loop: "{{ zfs_pool }}"
   no_log: true
 
@@ -191,6 +99,7 @@
     url: https://api.github.com/repos/zbm-dev/zfsbootmenu/releases/latest
     return_content: true
   register: _zbm_latest
+  no_log: true
 
 - name: Create directory for zfsbootmanager repo
   file:
@@ -216,15 +125,17 @@
 - name: Configure dracut
   copy:
     content: |
-      hostonly="no"
-      nofsck="yes"
+      hostonly=" no "
+      nofsck=" yes "
       add_dracutmodules+=" zfs "
       omit_dracutmodules+=" btrfs "
-      install_items+=" /etc/zfs/zroot.key "
+      install_items+=" {{ '/etc/zfs/' + item.poolname + '.key' }} "
     dest: "{{ _tgt_root }}/etc/dracut.conf.d/100-zol.conf"
     owner: root
     group: root
     mode: 0o644
+  loop: "{{ zfs_pool }}"
+  # no_log: true
 
 - name: Configure zfsbootmenu
   copy:
@@ -255,7 +166,7 @@
   lineinfile:
     path: "{{ _tgt_root }}/etc/zfsbootmenu/dracut.conf.d/zfsbootmenu.conf"
     regexp: '^omit_dracutmodules+='
-    line: 'omit_dracutmodules+=" btrfs resume systemd systemd-initrd dracut-systemd "'
+    line: 'omit_dracutmodules+=" btrfs resume systemd systemd-initrd dracut-systemd plymouth"'
     state: present
 
 - name: Omit nouveau drives
@@ -282,11 +193,12 @@
 
 - name: Download & build Yaml PP Perl module
   command: "chroot {{ _tgt_root }} cpan 'YAML::PP'"
+  no_log: true
 
 - name: update initramfs
   command: "{{ item }}"
   loop:
-    - "chroot {{ _tgt_root }} update-initramfs -c -k all"
+    - "chroot {{ _tgt_root }} dracut --force"
 
 - name: Generate ZFSBootMenu
   command: "chroot {{ _tgt_root }} generate-zbm"
@@ -294,14 +206,37 @@
 - name: Create refind_linux.conf
   copy:
     content: |
-      "Boot default"  "zfsbootmenu:POOL={{ item.poolname }} zbm.import_policy=hostid zbm.set_hostid zbm.timeout=15 ro quiet loglevel=0"
+      "Boot default"  "zfsbootmenu:POOL={{ item.poolname }} zbm.import_policy=hostid zbm.set_hostid zbm.timeout={{ item.zbm_timeout}} {{ item['zbm_cmdline']|join(' ') }}"
       "Boot to menu"  "zfsbootmenu:POOL={{ item.poolname }} zbm.import_policy=hostid zbm.set_hostid zbm.show ro quiet loglevel=0"
     dest: "{{ _tgt_root }}/boot/efi/EFI/debian/refind_linux.conf"
     owner: root
     group: root
     mode: 0o644
   loop: "{{ zfs_pool }}"
-  # no_log: true
+  no_log: true
+
+- name: Install refind to /boot/efi
+  command: "chroot {{ _tgt_root }} refind-install"
+
+- name: Ensure EFI removable directory exists
+  file:
+    path: "{{ _tgt_root }}/boot/efi/EFI/Boot"
+    state: directory
+    owner: root
+    group: root
+    mode: '755'
+  when: "efi_use_extra_removable|default(true)"
+
+- name: Copy ZFSBootMenu to EFI removable directory
+  copy:
+    remote_src: true
+    src: "{{ _tgt_root }}/boot/efi/EFI/refind/refind_x64.efi"
+    dest: "{{ _tgt_root }}/boot/efi/EFI/Boot/bootx64.efi"
+    mode: preserve
+  when: "efi_use_extra_removable|default(true)"
+
+- name: Ensure efivars is unmounted in chroot
+  command: "chroot {{ _tgt_root }} umount efivarfs"
 
 - name: set root password
   command: >

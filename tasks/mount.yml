@@ -1,33 +1,79 @@
 ---
-- name: Unmount zfs filesystems
-  command: "zfs umount -a -f"
 
-- name: Mount zfs filesystems in order
-  command: "zfs mount {{ item.path }}"
-  loop: "{{ zfs_fs }}"
+- name: Read device information
+  community.general.parted: device={{ item }} unit=MiB
+  register: _target_device_info
+  loop: "{{ _target_devices }}"
+
+- name: Import zpools from target devices
+  command: >
+    zpool import \
+      -a -f -N -R {{ dbstrp_mountpoint }} \
+      -d {{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}
   when:
-    - "'canmount=off' not in item['options']|default([])"
+    - "item[1] is defined"
+  loop: "{{ _target_device_info.results|subelements('partitions') }}"
+  loop_control:
+    label: "{{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}"
 
-- name: create mountpoint dictionary
-  set_fact:
-    _mountpoints: >
-      {{ _mountpoints|default({})|combine({item.value['mount']: item.value|combine({'device': item.key })}) }}
-  with_dict: "{{ _tgt_devices }}"
-  when: >
-    not item.value['encrypt']|default(False) and item.value['fs']|default('undefined') in ['ext4', 'xfs', 'vfat'] and
-    item.value['mount'] is defined
+- name: Load encryption keys
+  expect:
+    command: zfs load-key -r -L 'prompt' {{ item.poolname }}
+    responses:
+      (?i)passphrase: "{{ item.passphrase }}"
+  loop: "{{ zfs_pool }}"
+  no_log: true
 
-- name: set ordered mount list
-  set_fact:
-    _mountlist: "{{ _mountlist|default([]) + [item.key] }}"
-  with_dict: "{{ _mountpoints }}"
+- name: Gather facts about ZFS pools
+  community.general.zpool_facts: properties='name'
+  no_log: true
 
-# A bit of shell scripting here to ensure that the directory exists on the mounted device
-- name: create mountpoints and mount
-  shell: >
-    if [ ! -d {{ _tgt_root }}{{ _mountpoints[item]['mount'] }} ];
-    then mkdir -p {{ _tgt_root }}{{ _mountpoints[item]['mount'] }}; fi;
-    mount {{ _mountpoints[item]['device'] }} {{ _tgt_root }}{{ _mountpoints[item]['mount'] }}
-  with_items: "{{ _mountlist|sort }}"
-  register: _mount
+- name: Gather facts about ZFS filesystems
+  community.general.zfs_facts:
+    dataset: "{{ item.name }}"
+    recurse: true
+  loop: "{{ ansible_zfs_pools }}"
+  loop_control:
+    label: "{{ item.name }}"
 
+- name: Mount root zfs filesystem
+  command: "zfs mount {{ item.name }}"
+  loop: "{{ ansible_zfs_datasets }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - "item.canmount != 'off'"
+    - "item.mountpoint == dbstrp_mountpoint"
+
+- name: Automount remaining zfs filesystems
+  command: zfs mount -a
+
+- name: Ensure /boot/efi is not mounted in live environment
+  ansible.posix.mount:
+    path: "{{ item }}"
+    state: unmounted
+  loop:
+    - "{{ dbstrp_mountpoint }}/boot/efi"
+    - "/boot/efi"
+
+- name: Mount /boot/efi in chroot
+  ansible.posix.mount:
+    src: "{{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}"
+    path: "{{ dbstrp_mountpoint }}/boot/efi"
+    fstype: vfat
+    opts: defaults
+    fstab: "{{  dbstrp_mountpoint  }}/etc/fstab"
+    state: mounted
+  when:
+    - "item[1] is defined"
+    - "'esp' in item[1].flags"
+    - "'boot' in item[1].flags"
+  loop: "{{ _target_device_info.results|subelements('partitions') }}"
+
+- name: Ensure efivars is mounted in live environment
+  ansible.posix.mount:
+    src: "/sys/firmware/efi/efivars"
+    path: "efivarfs"
+    fstype: efivarfs
+    opts: defaults
+    state: mounted

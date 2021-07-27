@@ -12,75 +12,34 @@ mirrors:
 
 supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsuite']
 
-dependencies:
-  global:
-    - parted
-    - gdisk
-    - debootstrap
-    - xfsprogs
-    - e2fsprogs
-    - uuid-runtime
-    - eatmydata
-    - dosfstools
-    - openssl
-    - locales
-    - console-setup
+# packages to install on target
+install_packages:
+  all:
+    - build-essential
     - ca-certificates
-  encryption:
-    - cryptsetup
-  lvm:
-    - lvm2
-    - thin-provisioning-tools
-  md:
-    - mdadm
-  zfs:
+    - console-setup
     - dpkg-dev
     - dracut-core
+    - efivar
     - fzf
     - git
     - kexec-tools
     - libboolean-perl
     - libconfig-inifiles-perl
     - libsort-versions-perl
+    - linux-headers-amd64
+    - linux-image-amd64
+    - locales
     - mbuffer
+    - nfs-common
+    - openssh-server
+    - openssl
+    - python3-minimal
     - python3-pexpect
     - refind
-    - systemd-sysv
-    - zfs-dkms  # for ZFS 0.8 using the PPA
-    - zfs-initramfs
-    - zfs-zed
-    - zfsutils-linux
-
-no_recommends:
-  all:
-    - "linux-headers-{{ ansible_kernel }}"
-    - linux-headers-generic
-    - dkms
-  hirsuite:
-    - linux-image-generic
-  bionic:
-    - linux-image-generic
-  eoan:
-    - linux-image-generic
-  focal:
-    - linux-image-generic
-  groovy:
-    - linux-image-generic
-  jessie:
-    - linux-image-amd64
-  stretch:
-    - linux-image-amd64
-  buster:
-    - linux-image-amd64
-  bullseye:
-    - linux-image-amd64
-
-required_packages:
-  all:
-    - openssh-server
-    - locales
-    - python3-minimal
     - sudo
+    - systemd-sysv
+    - zfs-dracut
   hirsuite:
     - python-minimal
   bionic:
@@ -100,6 +59,31 @@ required_packages:
   bullseye:
     - python2-minimal
 
+# packages to install on live system
+dependencies:
+  - parted
+  - python3-pexpect
+  - gdisk
+  - "linux-headers-{{ ansible_kernel }}"
+  - debootstrap
+  - efivar
+  - xfsprogs
+  - e2fsprogs
+  - uuid-runtime
+  - eatmydata
+  - dosfstools
+  - zfs-dkms
+  - zfs-zed
+  - zfsutils-linux
+
+# Any packages listed here will be install with --install-no-recommends
+no_recommends:
+  - "linux-headers-{{ ansible_kernel }}"
+  - linux-headers-generic
+  - linux-image-generic
+  - linux-image-amd64
+  - dkms
+  - zfs-dkms
 
 _apt_env:
   TERM: linux
@@ -138,11 +122,5 @@ pseudo_fs:
   - dev/pts
   - run/udev
 
-# use efi?
-use_efi: yes
-
 # Do not touch these - they are automatically generated
 _target_devices: []
-_devices_used: []
-_mountlist: []
-_encrypt_targets: {}

@@ -1,5 +1,10 @@
 ---
 
+- name: Ensure efivars is unmounted
+  ansible.posix.mount:
+    path: "efivarfs"
+    state: unmounted
+
 - name: Ensure pseudo filesystems are unmounted
   ansible.posix.mount:
     path: "{{ dbstrp_mountpoint }}/{{ item }}"
@@ -47,19 +52,6 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Deactivate volumes
-  lvol:
-    active: no
-    lv: "{{ volume.lvm.lv|default(volume.lvm.thinpool) }}"
-    vg: "{{ volume.lvm.vg }}"
-  loop_control:
-    loop_var: volume
-    label: "{{ volume.lvm.vg }}/volume.lvm.lv|default(volume.lvm.thinpool) }}"
-  loop: "{{ lvm|reverse|list }}"
-  when: >
-    volume.lvm is defined and (
-    volume.lvm.lv is defined or volume.lvm.thinpool is defined)
-
 - name: Gather luks targets
   command: dmsetup info -c -o Name --noheadings
   register: _targets
@@ -69,5 +61,5 @@
   when: "not item == 'No devices found'"
   loop: "{{ _targets.stdout_lines }}"
 
-- name: stop raid devices
+- name: Stop any raid devices
   command: "mdadm --stop --scan"

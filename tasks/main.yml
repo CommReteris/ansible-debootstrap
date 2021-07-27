@@ -51,18 +51,6 @@
     - name: Partition Devices
       include_tasks: partitions.yml
 
-    - name: Create MD Devices
-      include_tasks: md.yml
-      when: md is defined and md|count > 0
-
-    - name: encrypt devices
-      include_tasks: encryption.yml
-      when: _encrypt
-
-    - name: Create logical volumes
-      include_tasks: lvm.yml
-      when: lvm is defined and lvm|count > 0
-
     - name: Create filesystems
       include_tasks: fs.yml
 

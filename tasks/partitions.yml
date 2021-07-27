@@ -14,10 +14,6 @@
     - partitions
     - "{{ {'skip_missing': True} }}"
 
-- name: debug uuids
-  debug:
-    var: _partuuids
-
 # Partitions are stored in ansible facts, however this only seems to work
 # for some devices.
 - name: check if device is already partitioned
@@ -28,14 +24,6 @@
 - name: set helper for blockdevices
   set_fact:
     block_devices: "{{ (_lsblk.stdout|from_json)['blockdevices'] }}"
-
-- name: check for partitions on target_device
-  set_fact:
-    _devices_used: "{{ _devices_used + [item['name']] }}"
-  loop: "{{ block_devices }}"
-  when: item['children'] is defined
-  loop_control:
-    label: "{{ item['name'] }}"
 
 - name: Create Partitions
   command: >
@@ -65,28 +53,6 @@
   set_fact:
     _tgt_devices: "{{ _tgt_devices|default({})|combine({item.stdout: {'partuuid': item.item.value }}) }}"
   with_items: "{{ _blkid.results }}"
-
-- debug:
-    var: layout_w_attrs
-    verbosity: 2
-
-- debug:
-    var: _tgt_devices
-    verbosity: 2
-
-- name: debug tgt_devices
-  debug:
-    msg: >-
-      {% if "nvme" in item.0.device %}
-      {% set __devname=item.0.device + 'p' + item.1.num|string %}
-      {% else %}
-      {% set __devname=item.0.device + item.1.num|string %}
-      {% endif %}
-      {{ _tgt_devices[__devname] }}
-  with_subelements:
-    - "{{ layout }}"
-    - partitions
-    - "{{ {'skip_missing': True} }}"
 
 - name: enrich partition data
   set_fact:
