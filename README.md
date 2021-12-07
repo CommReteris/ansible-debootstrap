@@ -1,4 +1,4 @@
-# Run debootstrap through ansible
+# debootstrap debian on native encrypted zfs through ansible
 
 This role will allow you to bootstrap a system over SSH using ansible. Typical
 applications include remote installing via bootable thumb drive or PXE boot or
@@ -7,9 +7,10 @@ this for all his Debian installation needs.
 
 ## Features
 * **Your own partition layout**: You can choose your own partition layout
-* **Encryption**: Encrypt partitions and hard drives with a pre-shared key (it
-is strongly suggested you use ansible-vault here)
 * **ZFS** is supported, even/especially as a root device
+* **Encryption**: Support for native zfs encryption (it
+is strongly suggested you use ansible-vault here)
+* **zfsbootmanager**: boot with refind/zbm (see: https://github.com/zbm-dev/zfsbootmenu)
 
 ## Limitations
 * You can't have the same names for ZFS pools and crypto devices
@@ -17,12 +18,13 @@ is strongly suggested you use ansible-vault here)
 
 ## Supported distributions
 * Debian
-  * Stretch
+  * Stretch (untested)
   * Buster (untested)
+  * Bullseye
 * Ubuntu
-  * bionic (18.04 LTS)
-  * disco (19.04)
-  * eoan (19.10) **requires debootstrap 1.0.115**
+  * bionic (18.04 LTS) (untested)
+  * disco (19.04) (untested)
+  * eoan (19.10) **requires debootstrap 1.0.115** (untested)
 
 Minor modifications will likely make it possible to install newer and perhaps
 older versions as well, or even other Debian based distributions. There are
@@ -49,15 +51,9 @@ pools.
 `release`: The release codename (**required**, example: *cosmic*)  
 `root_password`: Hashed, Salted root password, you can use mkpasswd to create
 one (Example: `$1$sfQaZkVR$Vo/0pjmJaljzakEQFCr7Q/`, obviously **don't use this
-one ;) )**  
-`use_serial`: Serial device to use for console / grub  
+one ;) )**
 `use_tmpfs`: Bootstrap to tmpfs, it's quicker and may reduce wear on flash
-(**default**: *yes*)  
-`use_efi`: In case the system supports UEFI, "grub-efi" will be installed on
-te target system, otherwise "grub-pc" (**default**: *yes*). This requires a
-VFAT partition available at /boot/efi.  
-`kernel_cmdline`: Anything you need/want to pass to the kernel (**default**:
-provided by distro)  
+(**default**: *yes*)
 `layout`: Dictionary of partitions / devices (**required**, see below)  
 `md`: List of DM-RAID devices (see below)  
 `lvm`: List of LVM volumes (see below)  

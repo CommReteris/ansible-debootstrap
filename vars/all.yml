@@ -1,32 +1,4 @@
 ---
-
-dependencies:
-  global:
-    - parted
-    - gdisk
-    - debootstrap
-    - xfsprogs
-    - e2fsprogs
-    - uuid-runtime
-    - eatmydata
-    - dosfstools
-    - openssl
-  encryption:
-    - cryptsetup
-  lvm:
-    - lvm2
-    - thin-provisioning-tools
-  md:
-    - mdadm
-  zfs:
-    - "linux-headers-{{ ansible_kernel }}"
-    - linux-headers-generic
-    - dkms
-    - zfsutils-linux
-    - zfs-initramfs
-    - zfs-zed
-    - zfs-dkms  # for ZFS 0.8 using the PPA
-
 mirrors:
   stretch: http://httpredir.debian.org/debian
   buster: http://httpredir.debian.org/debian
@@ -40,43 +12,87 @@ mirrors:
 
 supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsuite']
 
-required_packages:
+# packages to install on target
+install_packages:
   all:
+    - build-essential
+    - ca-certificates
     - console-setup
-    - grub-efi-amd64
-    - grub-efi-amd64-signed
-    - shim-signed
-    - openssh-server
+    - dpkg-dev
+    - dracut-core
+    - efivar
+    - fzf
+    - git
+    - kexec-tools
+    - libboolean-perl
+    - libconfig-inifiles-perl
+    - libsort-versions-perl
+    - linux-headers-amd64
+    - linux-image-amd64
     - locales
+    - mbuffer
+    - nfs-common
+    - openssh-server
+    - openssl
     - python3-minimal
+    - python3-pexpect
+    - refind
     - sudo
+    - systemd-sysv
+    - zfs-dracut
   hirsuite:
     - python-minimal
-    - linux-image-generic
   bionic:
     - python-minimal
-    - linux-image-generic
   eoan:
-    - linux-image-generic
+    - ""
   focal:
-    - linux-image-generic
+    - ""
   groovy:
-    - linux-image-generic
+    - ""
   jessie:
     - python-minimal
-    - linux-image-amd64
   stretch:
     - python-minimal
-    - linux-image-amd64
   buster:
     - python-minimal
-    - linux-image-amd64
   bullseye:
     - python2-minimal
-    - linux-image-amd64
+
+# packages to install on live system
+dependencies:
+  - parted
+  - python3-pexpect
+  - gdisk
+  - "linux-headers-{{ ansible_kernel }}"
+  - debootstrap
+  - efivar
+  - xfsprogs
+  - e2fsprogs
+  - uuid-runtime
+  - eatmydata
+  - dosfstools
+  - zfs-dkms
+  - zfs-zed
+  - zfsutils-linux
+
+# Any packages listed here will be install with --install-no-recommends
+no_recommends:
+  - "linux-headers-{{ ansible_kernel }}"
+  - linux-headers-generic
+  - linux-image-generic
+  - linux-image-amd64
+  - dkms
+  - zfs-dkms
 
 _apt_env:
+  TERM: linux
   DEBIAN_FRONTEND: noninteractive
+  DEBCONF_NONINTERACTIVE_SEEN: true
+  LANG: en_US.UTF-8
+  LANGUAGE: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+  LC_COLLATE: C
 
 dbstrp_mkfs_defaults:
   ext4: -f -b 4096
@@ -108,6 +124,3 @@ pseudo_fs:
 
 # Do not touch these - they are automatically generated
 _target_devices: []
-_devices_used: []
-_mountlist: []
-_encrypt_targets: {}

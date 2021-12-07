@@ -65,4 +65,33 @@
         chroot {{ dbstrp_mountpoint }} useradd -m -u {{ dbstrp_user['uid'] }} -s /bin/bash
           -g {{ dbstrp_user['group'] }} -G sudo -p {{ dbstrp_user['password'] }}
           {{ dbstrp_user['name'] }}
+
+    - name: Create ssh directory for bootstrap user
+      file:
+        state: directory
+        path: "{{ dbstrp_mountpoint }}/home/{{ dbstrp_user['name'] }}/.ssh"
+        owner: "{{ dbstrp_user['name'] }}"
+
+    - name: Create ssh directory for bootstrap user on host
+      file:
+        state: directory
+        path: "/tmp/.debootstrap-ssh"
+        owner: "{{ dbstrp_user['name'] }}"
+        mode: 0700
+
+    - name: Setup keys for bootstrap user
+      authorized_key:
+        key: "{{ item }}"
+        path: "{{ dbstrp_mountpoint }}/home/{{ dbstrp_user['name'] }}/.ssh/authorized_keys"
+        user: "{{ dbstrp_user['name'] }}"
+      with_items: "{{ dbstrp_ssh_keys }}"
+
+    - name: Allow sudo for debootstrap user
+      copy:
+        dest: "{{ dbstrp_mountpoint }}/etc/sudoers.d/{{ dbstrp_user['name'] }}"
+        owner: root
+        group: root
+        mode: 0440
+        content: "{{ dbstrp_user['name'] }} ALL=(ALL) NOPASSWD:ALL"
+
   when: _tgt_user

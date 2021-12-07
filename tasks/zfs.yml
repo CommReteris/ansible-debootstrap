@@ -1,11 +1,20 @@
 ---
+- name: Remove any residual directories in dbstrp_mountpoint
+  file:
+    path: "{{ dbstrp_mountpoint }}"
+    state: absent
 
 - name: create zpools
-  command: >
-    zpool create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
-    {% if 'options' in item %}-O {{ item['fs_options']|default([])|join(' -O ') }}{% endif %}
-    -R {{ _tgt_root }} {{ item['poolname']|default('rpool') }} {{ item['devices']|join(' ') }}
-  with_items: "{{ zfs_pool }}"
+  expect:
+    command: >
+      zpool create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
+      {% if 'options' in item %}-O {{ item['fs_options']|default([])|join(' -O ') }}{% endif %}
+      -R {{ _tgt_root }} {{ item['poolname']|default('rpool') }} {{ item.mode }} {{ item['devices']|join(' ') }}
+    responses:
+      Enter passphrase: "{{ item.passphrase }}"
+      Re-enter passphrase: "{{ item.passphrase }}"
+  loop: "{{ zfs_pool }}"
+  # no_log: true
   register: _zpool
 
 - name: create zfs filesystems
@@ -14,6 +23,37 @@
     {{ item['path'] }}
   with_items: "{{ zfs_fs }}"
 
-- name: add dependencies to install list
-  set_fact:
-    install_packages: "{{ install_packages + dependencies['zfs'] }}"
+- name: Set bootfs
+  command: "zpool set bootfs={{ zfs_root }} rpool"
+
+- name: Gather facts about ZFS pools
+  community.general.zpool_facts: properties='name'
+
+- name: Unmount automounting zfs filesystems
+  command: zfs umount -a
+
+- name: Gather facts about ZFS filesystems
+  community.general.zfs_facts:
+    dataset: "{{ item.name }}"
+    recurse: true
+  loop: "{{ ansible_zfs_pools }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Unmount noauto zfs filesystems
+  command: zfs unmount {{ item.name }}
+  when: "item.mounted == 'yes'"
+  loop: "{{ ansible_zfs_datasets }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Export ZFS pools
+  command: zpool export {{ item.name }}
+  loop: '{{ ansible_zfs_pools }}'
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Remove any residual directories in dbstrp_mountpoint
+  file:
+    path: "{{ dbstrp_mountpoint }}"
+    state: absent

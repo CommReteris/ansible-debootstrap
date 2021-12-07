@@ -1,0 +1,82 @@
+---
+
+# add more sources for apt
+- name: update sources.list
+  template:
+    src: "sources_ubuntu.list"
+    dest: "/etc/apt/sources.list"
+    mode: "0644"
+    owner: root
+    group: root
+  when: release in ["xenial", "artful", "bionic", "focal", "hirsuite"]
+
+- name: install ZFS ppa for bionic
+  apt_repository:
+    repo: ppa:jonathonf/zfs
+  register: _dbstrp_zfs_backport_repo
+  when: >-
+    ansible_distribution == "Ubuntu"
+    and ansible_distribution_release in ["bionic", "disco"]
+    and zfs_pool is defined
+    and dbstrp_zfs_backport|default(False)
+
+- name: update sources.list
+  template:
+    src: "sources_debian.list"
+    dest: "/etc/apt/sources.list"
+    mode: "0644"
+    owner: root
+    group: root
+  when: release in ["stretch", "buster", "sid", "bullseye"]
+
+- name: Filter dependencies to install with no_recommends
+  set_fact:
+    _dependencies_no_recommends: "{{ dependencies | intersect(no_recommends) }}"
+
+- name: Filter dependencies to install normally
+  set_fact:
+    _dependencies: "{{ dependencies | difference(_dependencies_no_recommends) }}"
+
+- name: Install dependencies requiring no recommends
+  apt:
+    name: "{{ _dependencies_no_recommends }}"
+    state: latest
+    update_cache: yes
+    install_recommends: no
+
+# In some cases the old module is still loaded, this will unload and reload.
+- block:
+    - name: stop zed
+      systemd:
+        name: zfs-zed.service
+        state: stopped
+
+    - name: unload ZFS modules
+      modprobe:
+        name: "zfs"
+        state: "absent"
+
+    - name: load ZFS module
+      modprobe:
+        name: zfs
+        state: present
+
+  when: dbstrp_zfs_backport|default(False)
+
+- name: Install dependencies
+  apt:
+    name: "{{ _dependencies }}"
+    state: latest
+    update_cache: no
+
+# This may fail when buster-backports isn't enabled as repository, however
+# this is preferable to debootstrap failing later. This works on the Hetzner
+# rescue system which is a common use case for this author
+- name: Install debootstrap from buster-backports when on buster and eoan
+  apt:
+    name: debootstrap
+    state: latest
+    default_release: buster-backports
+    cache_valid_time: "{{ debian_cache_valid_time|default(7200) }}"
+    update_cache: yes
+  when: ansible_distribution_release == 'buster' and release == 'eoan'

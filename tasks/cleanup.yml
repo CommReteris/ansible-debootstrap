@@ -1,17 +1,35 @@
 ---
 
+- name: Ensure efivars is unmounted
+  ansible.posix.mount:
+    path: "efivarfs"
+    state: unmounted
+
 - name: Ensure pseudo filesystems are unmounted
   ansible.posix.mount:
     path: "{{ dbstrp_mountpoint }}/{{ item }}"
     state: unmounted
   with_items: "{{ pseudo_fs|reverse }}"
 
-- name: Ensure {{ dbstrp_mountpoint }}/boot/efi is not mounted
+- name: Ensure /boot/efi is not mounted
   ansible.posix.mount:
-    path: "{{ dbstrp_mountpoint }}/boot/efi"
+    path: "{{ item }}"
     state: unmounted
+  loop:
+    - "{{ dbstrp_mountpoint }}/boot/efi"
+    - "/boot/efi"
 
 - name: Check for mounted targets
+  command: mount
+  register: _existing_mounts
+
+- name: Unmount any zfs mounts
+  command: zfs umount -f -a
+  when:
+    - "dbstrp_mountpoint in _existing_mounts.stdout"
+    - "'type zfs' in _existing_mounts.stdout"
+
+- name: Check again for mounted targets
   command: mount
   register: _existing_mounts
 
@@ -25,11 +43,6 @@
     - "dbstrp_mountpoint in _existing_mounts.stdout"
     - "'type zfs' in _existing_mounts.stdout"
 
-- name: Remove any residual directories in {{ dbstrp_mountpoint }}
-  file:
-    path: "{{ dbstrp_mountpoint }}"
-    state: absent
-
 - name: Gather facts about ZFS pools
   community.general.zpool_facts: properties='name'
 
@@ -38,19 +51,6 @@
   loop: '{{ ansible_zfs_pools }}'
   loop_control:
     label: "{{ item.name }}"
-
-- name: Deactivate volumes
-  lvol:
-    active: no
-    lv: "{{ volume.lvm.lv|default(volume.lvm.thinpool) }}"
-    vg: "{{ volume.lvm.vg }}"
-  loop_control:
-    loop_var: volume
-    label: "{{ volume.lvm.vg }}/volume.lvm.lv|default(volume.lvm.thinpool) }}"
-  loop: "{{ lvm|reverse|list }}"
-  when: >
-    volume.lvm is defined and (
-    volume.lvm.lv is defined or volume.lvm.thinpool is defined)
 
 - name: Gather luks targets
   command: dmsetup info -c -o Name --noheadings
@@ -61,5 +61,5 @@
   when: "not item == 'No devices found'"
   loop: "{{ _targets.stdout_lines }}"
 
-- name: stop raid devices
+- name: Stop any raid devices
   command: "mdadm --stop --scan"
