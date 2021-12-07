@@ -242,3 +242,15 @@
   command: >
       chroot {{ _tgt_root }} usermod -p '{{ root_password }}' root
   when: root_password is defined
+
+  # CHOWN ~/
+
+- name: Snapshot configured filesystems
+  zfs:
+    name: "{{ zfs_root }}@configure"
+    state: present
+
+- name: Remove previous snapshot
+  zfs:
+    name: "{{ zfs_root }}@bootstrap"
+    state: absent

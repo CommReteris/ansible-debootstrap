@@ -1,0 +1,83 @@
+---
+- name: remove bootstrapped file from host
+  file:
+    state: absent
+    path: '/root/.bootstrap_complete'
+
+- name: set uuids
+  set_fact:
+    _partuuids: >-
+      {%- if "nvme" in item.0.device -%}
+      {%- set __devname=item.0.device + 'p' + item.1.num|string -%}
+      {%- else %}
+      {%- set __devname=item.0.device + item.1.num|string -%}
+      {%- endif %}
+      {%- set element={__devname: 2147483647|random()|to_uuid()} -%}
+      {{ _partuuids|default({})|combine(element) }}
+  with_subelements:
+    - "{{ layout }}"
+    - partitions
+    - "{{ {'skip_missing': True} }}"
+
+- name: find devices for partuuid
+  command: "blkid -l -o device -t PARTUUID='{{ item.value }}'"
+  register: _blkid
+  with_dict: "{{ _partuuids }}"
+
+- name: store real device for uuid
+  set_fact:
+    _tgt_devices: "{{ _tgt_devices|default({})|combine({item.stdout: {'partuuid': item.item.value }}) }}"
+  with_items: "{{ _blkid.results }}"
+
+- name: enrich partition data
+  set_fact:
+    _tgt_devices: >-
+      {%- if "nvme" in item.0.device -%}
+      {%- set __devname=item.0.device + 'p' + item.1.num|string -%}
+      {%- else -%}
+      {%- set __devname=item.0.device + item.1.num|string -%}
+      {%- endif -%}
+      {{
+      _tgt_devices|combine({__devname:
+      _tgt_devices[__devname]|combine(item.1)})
+      }}
+  with_subelements:
+    - "{{ layout }}"
+    - partitions
+    - "{{ {'skip_missing': True} }}"
+
+- name: Read device information
+  community.general.parted: device={{ item }} unit=MiB
+  register: _target_device_info
+  loop: "{{ _target_devices }}"
+
+- name: Import previously existing zpools from target devices
+  command: >
+    zpool import -d {{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}} -a -f -N -R {{ dbstrp_mountpoint }}
+  when:
+    - "item[1] is defined"
+  loop: "{{ _target_device_info.results|subelements('partitions') }}"
+
+- name: Load encryption keys
+  expect:
+    command: zfs load-key -a -L 'prompt'
+    responses:
+      (?i)passphrase: "{{ item.passphrase }}"
+  loop: "{{ zfs_pool }}"
+  # no_log: true
+
+- name: Rollback snapshot
+  command: zfs rollback -r -f {{ zfs_root }}@bootstrap
+
+- name: Mount zfs filesystems
+  command: zfs mount -f -a
+
+- name: set mountpoint
+  set_fact:
+    _tgt_root: "{{ dbstrp_mountpoint }}"
+    _mktemp: None
+
+- name: bind mount pseudo filesystems
+  shell: mkdir -p {{ _tgt_root }}/{{ item }}; mount --bind /{{ item }} {{ _tgt_root }}/{{ item }}
+  register: _pseudomount
+  with_items: "{{ pseudo_fs }}"
