@@ -9,7 +9,7 @@
     command: >
       zpool create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
       {% if 'options' in item %}-O {{ item['fs_options']|default([])|join(' -O ') }}{% endif %}
-      -R {{ _tgt_root }} {{ item['poolname']|default('rpool') }} {{ item.mode }} {{ item['devices']|join(' ') }}
+      -R {{ _tgt_root }} {{ item['poolname']|default('rpool') }} {{ item['devices']|join(' ') }}
     responses:
       Enter passphrase: "{{ item.passphrase }}"
       Re-enter passphrase: "{{ item.passphrase }}"

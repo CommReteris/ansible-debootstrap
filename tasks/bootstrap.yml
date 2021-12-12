@@ -41,7 +41,12 @@
 
   - name: build list of packages to install
     set_fact:
-      _install: "{{ install_packages['all'] + install_packages[release] }}"
+      _install: "{{ install_packages.all + install_packages[release] }}"
+
+  - name: Append WiFi Dependencies
+    set_fact:
+      _install: "{{ _install + install_packages.wifi }}"
+    when: use_wifi
 
   - name: Filter packages to install with no_recommends
     set_fact:

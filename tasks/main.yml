@@ -84,4 +84,14 @@
       set_fact:
         bootstrapped: yes
 
+    - name: Snapshot configured filesystems
+      zfs:
+        name: "{{ zfs_root }}@configure"
+        state: present
+
+    - name: Remove previous snapshot
+      zfs:
+        name: "{{ zfs_root }}@bootstrap"
+        state: absent
+
   when: not bootstrapped or wipe|default('') == "ABSOLUTELY"

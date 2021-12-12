@@ -15,7 +15,7 @@
     line: "{{ item }}"
   loop: "{{ etchosts }}"
 
-- name: Instantiate templates to /etc
+- name: Instantiate network templates to /etc
   template:
     src: "{{ item.src }}"
     dest: "{{ _tgt_root }}/etc/{{ item.dest | default(item.src) }}"
@@ -23,8 +23,21 @@
     group: "{{ item.group|default('root') }}"
     mode: "{{ item.mode|default('0644') }}"
   with_items:
-  - { src: 'interfaces', dest: 'network/interfaces' }
   - { src: 'resolv.conf', dest: 'resolv.conf' }
+  - { src: 'interfaces', dest: 'network/interfaces' }
+  when: not use_wifi
+
+- name: Configure Wifi with Network-Manager
+  community.general.nmcli:
+    type: "{{ item.type }}"
+    conn_name: "{{ item.conn_name }}"
+    ifname: "{{ item.ifname }}"
+    ssid: "{{ item.ssid }}"
+    ip4: "{{ item.ip4 }}"
+    autoconnect: "{{ item.autoconnect }}"
+    state: "{{ item.state }}"
+  loop: "{{ network }}"
+  when: use_wifi
 
 - name: Configure NFS
   mount:
@@ -242,15 +255,3 @@
   command: >
       chroot {{ _tgt_root }} usermod -p '{{ root_password }}' root
   when: root_password is defined
-
-  # CHOWN ~/
-
-- name: Snapshot configured filesystems
-  zfs:
-    name: "{{ zfs_root }}@configure"
-    state: present
-
-- name: Remove previous snapshot
-  zfs:
-    name: "{{ zfs_root }}@bootstrap"
-    state: absent

@@ -1,16 +1,17 @@
 ---
 mirrors:
-  stretch: http://httpredir.debian.org/debian
-  buster: http://httpredir.debian.org/debian
-  bullseye: http://httpredir.debian.org/debian
+  stretch: https://httpredir.debian.org/debian
+  buster: https://deb.debian.org/debian
+  bullseye: https://deb.debian.org/debian
   xenial: http://archive.ubuntu.com/ubuntu
   bionic: http://archive.ubuntu.com/ubuntu
   eoan: http://archive.ubuntu.com/ubuntu
   focal: http://archive.ubuntu.com/ubuntu
   groovy: http://archive.ubuntu.com/ubuntu
   hirsuite: http://archive.ubuntu.com/ubuntu
+  pop21: http://archive.ubuntu.com/ubuntu
 
-supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsuite']
+supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsuite', 'pop21']
 
 # packages to install on target
 install_packages:
@@ -40,6 +41,20 @@ install_packages:
     - sudo
     - systemd-sysv
     - zfs-dracut
+    - acpi-support
+    - cpufrequtils
+    - acpi
+    - powertop
+    - acpid
+    - bluetooth
+    - firmware-misc-nonfree
+    - intel-microcode
+  wifi:
+    - firmware-iwlwifi
+    - iw
+    - wireless-tools
+    - pciutils
+    - network-manager
   hirsuite:
     - python-minimal
   bionic:
@@ -84,6 +99,9 @@ no_recommends:
   - linux-image-amd64
   - dkms
   - zfs-dkms
+  - firmware-iwlwifi
+  - firmware-misc-nonfree
+  - intel-microcode
 
 _apt_env:
   TERM: linux
