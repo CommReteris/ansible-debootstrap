@@ -1,5 +1,5 @@
 ---
-supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsute']
+supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsute', 'impish']
 
 # packages to install on target
 install_packages:
@@ -41,6 +41,12 @@ install_packages:
     - iw
     - wireless-tools
     - pciutils
+  impish:
+    - linux-headers-generic
+    - linux-image-generic
+    - linux-firmware
+    - linux-image-liquorix-amd64
+    - linux-headers-liquorix-amd64
   hirsute:
     - linux-headers-generic
     - linux-image-generic

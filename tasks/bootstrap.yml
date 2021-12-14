@@ -65,7 +65,7 @@
       mode: "0644"
       owner: root
       group: root
-    when: release in ["xenial", "artful", "bionic", "focal", "hirsute"]
+    when: release in ["xenial", "artful", "bionic", "focal", "hirsute", "impish"]
 
   - name: Update sources.list
     template:
@@ -125,7 +125,7 @@
       chroot {{ _bootstrap_target }} eatmydata
       add-apt-repository -yu ppa:jonathonf/zfs
     when: >-
-      release in ["bionic", "disco", "hirsute"]
+      release in ["bionic", "disco", "hirsute", "impish"]
       and zfs_pool is defined
 
   - name: Add repository keys

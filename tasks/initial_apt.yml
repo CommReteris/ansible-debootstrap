@@ -8,7 +8,7 @@
     mode: "0644"
     owner: root
     group: root
-  when: release in ["xenial", "artful", "bionic", "focal", "hirsute"]
+  when: release in ["xenial", "artful", "bionic", "focal", "hirsute", "impish"]
 
 - name: install ZFS ppa for bionic
   apt_repository:
