@@ -25,8 +25,9 @@
 - block:
   - name: run bootstrap
     command: >
-      eatmydata debootstrap {% if dbstrp_variant is defined %}--variant={{ dbstrp_variant }}{% endif %}
-      {{ release }} {{ _bootstrap_target }} {{ use_mirror|default(mirrors[release]) }}
+      eatmydata debootstrap
+        {% if dbstrp_variant is defined %} --variant={{ dbstrp_variant }} {% endif %}
+        --include=python3-apt,gnupg {{ release }} {{ _bootstrap_target }}
 
   - name: bind mount pseudo filesystems
     shell: "mkdir {{ _bootstrap_target }}/{{ item }}; mount --bind /{{ item }} {{ _bootstrap_target }}/{{ item }} warn=no"
@@ -42,11 +43,6 @@
   - name: build list of packages to install
     set_fact:
       _install: "{{ install_packages.all + install_packages[release] }}"
-
-  - name: Append WiFi Dependencies
-    set_fact:
-      _install: "{{ _install + install_packages.wifi }}"
-    when: use_wifi
 
   - name: Filter packages to install with no_recommends
     set_fact:
@@ -69,7 +65,7 @@
       mode: "0644"
       owner: root
       group: root
-    when: release in ["xenial", "artful", "bionic", "focal", "hirsuite"]
+    when: release in ["xenial", "artful", "bionic", "focal", "hirsute"]
 
   - name: Update sources.list
     template:
@@ -87,7 +83,7 @@
       - "chroot {{ _bootstrap_target }} apt full-upgrade -yq"
 
   # cut down on fsync
-  - name: Install eatmydata & locales & console-setup
+  - name: Install eatmydata & locales & console-setup & add-apt-repository
     command: "chroot {{ _bootstrap_target }} apt-get -yq install eatmydata locales console-setup"
 
   - name: Generate & configure locales
@@ -121,15 +117,8 @@
   - name: Generate & configure locales
     command: "chroot {{ _bootstrap_target }} /root/locale_prep.sh"
 
-  - name: Allow ppa use
+  - name: Install add-apt-repository
     command: "chroot {{ _bootstrap_target }} eatmydata apt-get -yq install software-properties-common"
-    when: >-
-      install_ppa|default([])|length > 0 or
-      (
-        ansible_distribution == "Ubuntu"
-        and ansible_distribution_release in ["bionic", "disco"]
-        and zfs_pool is defined
-      and dbstrp_zfs_backport|default(False))
 
   - name: Install ZFS ppa for 0.8
     command: >-
@@ -150,6 +139,14 @@
   - name: register hostid
     command: echo $(hostid)
     register: _hostid
+
+  - name: Add repository keys
+    shell: "chroot {{ _bootstrap_target }} apt-key adv --keyserver {{ item.keyserver }} --recv-keys {{ item.key }}"
+    loop: "{{ keys }}"
+
+  - name: Enable repositories
+    shell: "chroot {{ _bootstrap_target }} add-apt-repository -yu {{ item.deb }}"
+    loop: "{{ repos }}"
 
   # A bit ineffective, since we'll be upgrading the cache every time.
   - name: Enable ppa

@@ -1,5 +1,4 @@
 ---
-
 - name: Get disks sizes, logical and physical sectors sizes
   command: blockdev --"{{ cmd_param }}" "{{ device }}"
   check_mode: no

@@ -13,7 +13,7 @@ galaxy_info:
     - stretch
   - name: Ubuntu
     versions:
-      - hirsuite
+      - hirsute
       - focal
       - bionic
       - cosmic

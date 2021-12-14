@@ -1,17 +1,5 @@
 ---
-mirrors:
-  stretch: https://httpredir.debian.org/debian
-  buster: https://deb.debian.org/debian
-  bullseye: https://deb.debian.org/debian
-  xenial: http://archive.ubuntu.com/ubuntu
-  bionic: http://archive.ubuntu.com/ubuntu
-  eoan: http://archive.ubuntu.com/ubuntu
-  focal: http://archive.ubuntu.com/ubuntu
-  groovy: http://archive.ubuntu.com/ubuntu
-  hirsuite: http://archive.ubuntu.com/ubuntu
-  pop21: http://archive.ubuntu.com/ubuntu
-
-supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsuite', 'pop21']
+supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsute']
 
 # packages to install on target
 install_packages:
@@ -28,8 +16,6 @@ install_packages:
     - libboolean-perl
     - libconfig-inifiles-perl
     - libsort-versions-perl
-    - linux-headers-amd64
-    - linux-image-amd64
     - locales
     - mbuffer
     - nfs-common
@@ -47,16 +33,11 @@ install_packages:
     - powertop
     - acpid
     - bluetooth
-    - firmware-misc-nonfree
     - intel-microcode
-  wifi:
-    - firmware-iwlwifi
-    - iw
-    - wireless-tools
-    - pciutils
-    - network-manager
-  hirsuite:
-    - python-minimal
+  hirsute:
+    - linux-headers-generic
+    - linux-image-generic
+    - linux-firmware
   bionic:
     - python-minimal
   eoan:
@@ -67,12 +48,29 @@ install_packages:
     - ""
   jessie:
     - python-minimal
+    - zfs-dkms
+    - linux-image-amd64
+    - linux-headers-amd64
   stretch:
     - python-minimal
+    - zfs-dkms
+    - linux-image-amd64
+    - linux-headers-amd64
   buster:
     - python-minimal
+    - zfs-dkms
+    - linux-image-amd64
+    - linux-headers-amd64
+    - firmware-iwlwifi
+    - iw
+    - wireless-tools
+    - pciutils
+    - network-manager
   bullseye:
     - python2-minimal
+    - zfs-dkms
+    - linux-image-amd64
+    - linux-headers-amd64
 
 # packages to install on live system
 dependencies:
@@ -87,7 +85,6 @@ dependencies:
   - uuid-runtime
   - eatmydata
   - dosfstools
-  - zfs-dkms
   - zfs-zed
   - zfsutils-linux
 

@@ -35,7 +35,7 @@
     ssid: "{{ item.ssid }}"
     ip4: "{{ item.ip4 }}"
     autoconnect: "{{ item.autoconnect }}"
-    state: "{{ item.state }}"
+    state: present
   loop: "{{ network }}"
   when: use_wifi
 
@@ -54,6 +54,7 @@
     dest: "{{ _tgt_root }}/etc/dkms/zfs.conf"
     content: REMAKE_INITRD=yes
     mode: 0o644
+  when: release in ["stretch", "buster", "sid", "bullseye"]
 
 - name: Set kexec to load
   replace:
