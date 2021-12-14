@@ -34,10 +34,19 @@ install_packages:
     - acpid
     - bluetooth
     - intel-microcode
+    - plymouth
+    - plymouth-themes
+    - zfs-dkms
+    - network-manager
+    - iw
+    - wireless-tools
+    - pciutils
   hirsute:
     - linux-headers-generic
     - linux-image-generic
     - linux-firmware
+    - linux-image-liquorix-amd64
+    - linux-headers-liquorix-amd64
   bionic:
     - python-minimal
   eoan:
@@ -48,29 +57,25 @@ install_packages:
     - ""
   jessie:
     - python-minimal
-    - zfs-dkms
     - linux-image-amd64
     - linux-headers-amd64
   stretch:
     - python-minimal
-    - zfs-dkms
     - linux-image-amd64
     - linux-headers-amd64
   buster:
     - python-minimal
-    - zfs-dkms
     - linux-image-amd64
     - linux-headers-amd64
     - firmware-iwlwifi
     - iw
     - wireless-tools
     - pciutils
-    - network-manager
   bullseye:
     - python2-minimal
-    - zfs-dkms
     - linux-image-amd64
     - linux-headers-amd64
+    - firmware-iwlwifi
 
 # packages to install on live system
 dependencies:

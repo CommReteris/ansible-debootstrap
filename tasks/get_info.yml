@@ -1,4 +1,12 @@
 ---
+- name: Get running kernel version
+  shell: echo $(uname -r)
+  register: _running_kernel
+
+- name: Set running kernel version
+  set_fact:
+    running_kernel: "{{ _running_kernel.stdout }}"
+
 - name: Get disks sizes, logical and physical sectors sizes
   command: blockdev --"{{ cmd_param }}" "{{ device }}"
   check_mode: no

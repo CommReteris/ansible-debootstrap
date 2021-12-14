@@ -9,6 +9,11 @@
 - name: Run initial APT tasks
   include_tasks: initial_apt.yml
 
+- name: set mountpoint
+  set_fact:
+    _tgt_root: "{{ dbstrp_mountpoint }}"
+    _mktemp: None
+
 - block:
     - name: Cleanup any previos deployment
       include_tasks: cleanup.yml
@@ -42,11 +47,6 @@
         name: ssh
         state: restarted
       when: _ssh_config.changed
-
-    - name: set mountpoint
-      set_fact:
-        _tgt_root: "{{ dbstrp_mountpoint }}"
-        _mktemp: None
 
     - name: Partition Devices
       include_tasks: partitions.yml
@@ -94,4 +94,4 @@
         name: "{{ zfs_root }}@bootstrap"
         state: absent
 
-  when: not bootstrapped or wipe|default('') == "ABSOLUTELY"
+ # when: not bootstrapped or wipe|default('') == "ABSOLUTELY"

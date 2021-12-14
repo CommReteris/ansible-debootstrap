@@ -120,15 +120,26 @@
   - name: Install add-apt-repository
     command: "chroot {{ _bootstrap_target }} eatmydata apt-get -yq install software-properties-common"
 
-  - name: Install ZFS ppa for 0.8
+  - name: Install ZFS ppa when ubuntu version doesn't cut it
     command: >-
       chroot {{ _bootstrap_target }} eatmydata
       add-apt-repository -yu ppa:jonathonf/zfs
     when: >-
-      ansible_distribution == "Ubuntu"
-      and ansible_distribution_release in ["bionic", "disco"]
+      release in ["bionic", "disco", "hirsute"]
       and zfs_pool is defined
-      and dbstrp_zfs_backport|default(False)
+
+  - name: Add repository keys
+    shell: "chroot {{ _bootstrap_target }} apt-key adv --keyserver {{ item.keyserver }} --recv-keys {{ item.key }}"
+    loop: "{{ keys }}"
+
+  - name: Enable repositories
+    shell: "chroot {{ _bootstrap_target }} add-apt-repository -yu {{ item.deb }}"
+    loop: "{{ repos }}"
+
+  - name: Enable PPAs
+    shell: "chroot  {{ _bootstrap_target }} eatmydata add-apt-repository -yu {{ item }}"
+    with_items: "{{ install_ppa|default([]) }}"
+    when: install_ppa is defined and install_ppa|length > 0
 
   # pool can't be imported when the hostid changes
   - name: copy hostid to chroot
@@ -139,20 +150,6 @@
   - name: register hostid
     command: echo $(hostid)
     register: _hostid
-
-  - name: Add repository keys
-    shell: "chroot {{ _bootstrap_target }} apt-key adv --keyserver {{ item.keyserver }} --recv-keys {{ item.key }}"
-    loop: "{{ keys }}"
-
-  - name: Enable repositories
-    shell: "chroot {{ _bootstrap_target }} add-apt-repository -yu {{ item.deb }}"
-    loop: "{{ repos }}"
-
-  # A bit ineffective, since we'll be upgrading the cache every time.
-  - name: Enable ppa
-    shell: "chroot  {{ _bootstrap_target }} eatmydata add-apt-repository -yu {{ item }}"
-    with_items: "{{ install_ppa|default([]) }}"
-    when: install_ppa is defined and install_ppa|length > 0
 
   - name: install packages
     command: "{{ item }}"

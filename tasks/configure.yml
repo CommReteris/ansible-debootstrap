@@ -90,7 +90,7 @@
     chroot {{ _tgt_root }} \
       zfs set org.zfsbootmenu:commandline="spl_hostid=\{{ _hostid.stdout }} {{ item['zbm_cmdline']|join(' ') }}" {{ item.poolname }}/ROOT
   loop: "{{ zfs_pool }}"
-  no_log: true
+#  no_log: true
 
 - name: Ensure zfs-list.cache/{{ item.poolname }} exists
   file:
@@ -159,14 +159,14 @@
         BootMountPoint: /boot/efi
         DracutConfDir: /etc/zfsbootmenu/dracut.conf.d
       Components:
-        ImageDir: /boot/efi/EFI/debian
+        ImageDir: /boot/efi/EFI/{{ release }}
         Versions: false
         Enabled: true
         syslinux:
           Config: /boot/syslinux/syslinux.cfg
           Enabled: false
       EFI:
-        ImageDir: /boot/efi/EFI/debian
+        ImageDir: /boot/efi/EFI/{{ release }}
         Versions: false
         Enabled: false
       Kernel:
@@ -180,7 +180,7 @@
   lineinfile:
     path: "{{ _tgt_root }}/etc/zfsbootmenu/dracut.conf.d/zfsbootmenu.conf"
     regexp: '^omit_dracutmodules+='
-    line: 'omit_dracutmodules+=" btrfs resume systemd systemd-initrd dracut-systemd plymouth"'
+    line: 'omit_dracutmodules+=" btrfs resume systemd systemd-initrd dracut-systemd plymouth "'
     state: present
 
 - name: Omit nouveau drives
@@ -209,20 +209,26 @@
   command: "chroot {{ _tgt_root }} cpan 'YAML::PP'"
   no_log: true
 
-- name: update initramfs
+- name: Get kernel version installed on target
+  command: "chroot {{ _tgt_root }} ls /lib/modules"
+  register: _target_kernel
+
+- name: Set target kernel version
+  set_fact:
+    target_kernel: "{{ _target_kernel.stdout }}"
+
+- name: Update initrd & generate ZFSBootMenu
   command: "{{ item }}"
   loop:
-    - "chroot {{ _tgt_root }} dracut --force"
-
-- name: Generate ZFSBootMenu
-  command: "chroot {{ _tgt_root }} generate-zbm"
+    - "chroot {{ _tgt_root }} dracut -f --regenerate-all"
+    - "chroot {{ _tgt_root }} generate-zbm"
 
 - name: Create refind_linux.conf
   copy:
     content: |
       "Boot default"  "zfsbootmenu:POOL={{ item.poolname }} zbm.import_policy=hostid zbm.set_hostid zbm.timeout={{ item.zbm_timeout}} {{ item['zbm_cmdline']|join(' ') }}"
       "Boot to menu"  "zfsbootmenu:POOL={{ item.poolname }} zbm.import_policy=hostid zbm.set_hostid zbm.show ro quiet loglevel=0"
-    dest: "{{ _tgt_root }}/boot/efi/EFI/debian/refind_linux.conf"
+    dest: "{{ _tgt_root }}/boot/efi/EFI/{{ release }}/refind_linux.conf"
     owner: root
     group: root
     mode: 0o644
