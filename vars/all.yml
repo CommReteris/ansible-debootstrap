@@ -97,6 +97,7 @@ dependencies:
   - eatmydata
   - dosfstools
   - zfs-zed
+  - zfs-dkms
   - zfsutils-linux
 
 # Any packages listed here will be install with --install-no-recommends

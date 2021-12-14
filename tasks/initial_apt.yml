@@ -10,16 +10,6 @@
     group: root
   when: release in ["xenial", "artful", "bionic", "focal", "hirsute", "impish"]
 
-- name: install ZFS ppa for bionic
-  apt_repository:
-    repo: ppa:jonathonf/zfs
-  register: _dbstrp_zfs_backport_repo
-  when: >-
-    ansible_distribution == "Ubuntu"
-    and ansible_distribution_release in ["bionic", "disco"]
-    and zfs_pool is defined
-    and dbstrp_zfs_backport|default(False)
-
 - name: update sources.list
   template:
     src: "sources_debian.list"
@@ -28,6 +18,31 @@
     owner: root
     group: root
   when: release in ["stretch", "buster", "sid", "bullseye"]
+
+- name: Install add-apt-repository
+  apt:
+    name: software-properties-common
+    state: latest
+    update_cache: no
+    install_recommends: no
+
+- name: Add repository keys
+  apt_key:
+    id: "{{ item.key }}"
+    keyserver: "{{ item.keyserver }}"
+    state: present
+    validate_certs: no
+  loop: "{{ keys }}"
+
+- name: Add repositories
+  apt_repository:
+    filename: "{{ item.name }}"
+    repo: "{{ item.deb }}"
+    codename: "{{ item.release|default(release) }}"
+    state: present
+    validate_certs: no
+    update_cache: no
+  loop: "{{ repos }}"
 
 - name: Filter dependencies to install with no_recommends
   set_fact:
@@ -61,7 +76,9 @@
         name: zfs
         state: present
 
-  when: dbstrp_zfs_backport|default(False)
+  when: >-
+    release in ["bionic", "disco", "hirsute", "impish"]
+    and zfs_pool is defined
 
 - name: Install dependencies
   apt:

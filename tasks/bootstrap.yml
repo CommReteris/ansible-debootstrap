@@ -83,7 +83,7 @@
       - "chroot {{ _bootstrap_target }} apt full-upgrade -yq"
 
   # cut down on fsync
-  - name: Install eatmydata & locales & console-setup & add-apt-repository
+  - name: Install eatmydata & locales & console-setup
     command: "chroot {{ _bootstrap_target }} apt-get -yq install eatmydata locales console-setup"
 
   - name: Generate & configure locales
@@ -125,7 +125,7 @@
       chroot {{ _bootstrap_target }} eatmydata
       add-apt-repository -yu ppa:jonathonf/zfs
     when: >-
-      release in ["bionic", "disco", "hirsute", "impish"]
+      release in ["bionic", "disco", "hirsute"]
       and zfs_pool is defined
 
   - name: Add repository keys

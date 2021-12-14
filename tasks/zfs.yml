@@ -13,6 +13,8 @@
     responses:
       Enter passphrase: "{{ item.passphrase }}"
       Re-enter passphrase: "{{ item.passphrase }}"
+      Enter new passphrase: "{{ item.passphrase }}"
+      Re-enter new passphrase: "{{ item.passphrase }}"
   loop: "{{ zfs_pool }}"
   # no_log: true
   register: _zpool
