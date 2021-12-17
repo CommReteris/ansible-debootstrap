@@ -21,10 +21,13 @@ is strongly suggested you use ansible-vault here)
   * Stretch (untested)
   * Buster (untested)
   * Bullseye
+  * Bookworm
 * Ubuntu
   * bionic (18.04 LTS) (untested)
   * disco (19.04) (untested)
   * eoan (19.10) **requires debootstrap 1.0.115** (untested)
+  * hirsute
+  * impish
 
 Minor modifications will likely make it possible to install newer and perhaps
 older versions as well, or even other Debian based distributions. There are

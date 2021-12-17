@@ -1,5 +1,8 @@
 ---
-supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsute', 'impish']
+supported_releases: [
+    'stretch', 'buster', 'bullseye', 'bookworm',
+    'bionic', 'eoan', 'focal', 'groovy', 'hirsute', 'impish'
+]
 
 # packages to install on target
 install_packages:
@@ -78,6 +81,11 @@ install_packages:
     - wireless-tools
     - pciutils
   bullseye:
+    - python2-minimal
+    - linux-image-amd64
+    - linux-headers-amd64
+    - firmware-iwlwifi
+  bookworm:
     - python2-minimal
     - linux-image-amd64
     - linux-headers-amd64

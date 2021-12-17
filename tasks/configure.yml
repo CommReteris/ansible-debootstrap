@@ -8,6 +8,11 @@
     content: "{{ fqdn.split('.')[0] }}"
     mode: 0o644
 
+- name: set root password
+  command: >
+      chroot {{ _tgt_root }} usermod -p '{{ root_password }}' root
+  when: root_password is defined
+
 - name: Configure additional hosts
   ansible.builtin.lineinfile:
     path: "{{ _tgt_root }}/etc/hosts"
@@ -54,7 +59,7 @@
     dest: "{{ _tgt_root }}/etc/dkms/zfs.conf"
     content: REMAKE_INITRD=yes
     mode: 0o644
-  when: release in ["stretch", "buster", "sid", "bullseye"]
+  when: release in ["stretch", "buster", "sid", "bullseye", "bookworm"]
 
 - name: Set kexec to load
   replace:
@@ -258,7 +263,3 @@
 - name: Ensure efivars is unmounted in chroot
   command: "chroot {{ _tgt_root }} umount efivarfs"
 
-- name: set root password
-  command: >
-      chroot {{ _tgt_root }} usermod -p '{{ root_password }}' root
-  when: root_password is defined

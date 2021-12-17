@@ -1,38 +1,23 @@
 ---
-- name: Remove any residual directories in dbstrp_mountpoint
-  file:
-    path: "{{ dbstrp_mountpoint }}"
-    state: absent
 
-- name: create zpools
-  expect:
-    command: >
-      zpool create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
-      {% if 'options' in item %}-O {{ item['fs_options']|default([])|join(' -O ') }}{% endif %}
-      -R {{ _tgt_root }} {{ item['poolname']|default('rpool') }} {{ item['devices']|join(' ') }}
-    responses:
-      Enter passphrase: "{{ item.passphrase }}"
-      Re-enter passphrase: "{{ item.passphrase }}"
-      Enter new passphrase: "{{ item.passphrase }}"
-      Re-enter new passphrase: "{{ item.passphrase }}"
-  loop: "{{ zfs_pool }}"
-  # no_log: true
-  register: _zpool
+- name: Import zpools from target devices
+  command: >
+    zpool import \
+      -a -f -N -R {{ dbstrp_mountpoint }} \
+      -d {{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}
+  when:
+    - "item[1] is defined"
+  loop: "{{ _target_device_info.results|subelements('partitions') }}"
+  loop_control:
+    label: "{{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}"
 
-- name: create zfs filesystems
+- name: Create zfs filesystems
   command: >
     zfs create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
     {{ item['path'] }}
+  when:
+    - "item.path not in {{ ansible_zfs_datasets }}"
   with_items: "{{ zfs_fs }}"
-
-- name: Set bootfs
-  command: "zpool set bootfs={{ zfs_root }} rpool"
-
-- name: Gather facts about ZFS pools
-  community.general.zpool_facts: properties='name'
-
-- name: Unmount automounting zfs filesystems
-  command: zfs umount -a
 
 - name: Gather facts about ZFS filesystems
   community.general.zfs_facts:
@@ -41,6 +26,9 @@
   loop: "{{ ansible_zfs_pools }}"
   loop_control:
     label: "{{ item.name }}"
+
+- name: Unmount automounting zfs filesystems
+  command: zfs umount -a
 
 - name: Unmount noauto zfs filesystems
   command: zfs unmount {{ item.name }}

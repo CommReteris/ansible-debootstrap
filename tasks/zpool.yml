@@ -1,0 +1,37 @@
+---
+
+- name: Remove any residual directories in dbstrp_mountpoint
+  file:
+    path: "{{ dbstrp_mountpoint }}"
+    state: absent
+
+- name: Import zpools from target devices
+  command: >
+    zpool import \
+      -a -f -N -R {{ dbstrp_mountpoint }} \
+      -d {{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}
+  when:
+    - "item[1] is defined"
+  loop: "{{ _target_device_info.results|subelements('partitions') }}"
+  loop_control:
+    label: "{{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}"
+
+- name: Create any zpools that do not already exist
+  expect:
+    command: >
+      zpool create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
+      {% if 'options' in item %}-O {{ item['fs_options']|default([])|join(' -O ') }}{% endif %}
+      -R {{ _tgt_root }} {{ item['poolname'] }} {{ item['devices']|join(' ') }}
+    responses:
+      Enter passphrase: "{{ item.passphrase }}"
+      Re-enter passphrase: "{{ item.passphrase }}"
+      Enter new passphrase: "{{ item.passphrase }}"
+      Re-enter new passphrase: "{{ item.passphrase }}"
+  when:
+    - "item.poolname not in {{ ansible_zfs_pools }}"
+  loop: "{{ zfs_pool }}"
+  # no_log: true
+  register: _zpool
+
+- name: Gather facts about ZFS pools
+  community.general.zpool_facts: properties='name'

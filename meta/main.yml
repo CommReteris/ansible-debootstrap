@@ -8,9 +8,10 @@ galaxy_info:
   platforms:
   - name: Debian
     versions:
-    - bullseye
-    - buster
-    - stretch
+      - bookworm
+      - bullseye
+      - buster
+      - stretch
   - name: Ubuntu
     versions:
       - impish

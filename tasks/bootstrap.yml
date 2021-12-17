@@ -74,7 +74,7 @@
       mode: "0644"
       owner: root
       group: root
-    when: release in ["stretch", "buster", "sid", "bullseye"]
+    when: release in ["stretch", "buster", "sid", "bullseye", "bookworm"]
 
   - name: apt update & upgrade
     command: "{{ item }}"
@@ -183,6 +183,9 @@
       dest: "{{ _bootstrap_target }}"
 
   when: use_tmpfs
+
+- name: Set bootfs
+  command: "zpool set bootfs={{ zfs_root }} {{ zpool_root }}"
 
 - name: Snapshot unconfigured filesystems
   zfs:

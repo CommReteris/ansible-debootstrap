@@ -1,0 +1,46 @@
+---
+
+# Move this to get_disk_info
+- name: Read device information
+  community.general.parted: device={{ item }} unit=MiB
+  register: _target_device_info
+  loop: "{{ _target_devices }}"
+#
+
+- name: Import zpools from target devices w/o mounting filesystems
+  command: >
+    zpool import \
+      -a -f -N -R {{ dbstrp_mountpoint }} \
+      -d {{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}
+  when:
+    - "item[1] is defined"
+  loop: "{{ _target_device_info.results|subelements('partitions') }}"
+  loop_control:
+    label: "{{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}"
+
+- name: Load encryption keys
+  expect:
+    command: zfs load-key -r -L 'prompt' {{ item.poolname }}
+    responses:
+      (?i)passphrase: "{{ item.passphrase }}"
+  loop: "{{ zfs_pool }}"
+  no_log: true
+  when: item.passphrase is defined
+
+- name: Gather facts about ZFS pools
+  community.general.zpool_facts: properties='name'
+  no_log: true
+
+- name: Gather facts about ZFS filesystems
+  community.general.zfs_facts:
+    dataset: "{{ item.name }}"
+    recurse: true
+  loop: "{{ ansible_zfs_pools }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Export zpools
+  command: zpool export {{ item.name }}
+  loop: '{{ ansible_zfs_pools }}'
+  loop_control:
+    label: "{{ item.name }}"

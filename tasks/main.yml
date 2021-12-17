@@ -3,6 +3,9 @@
 - name: Get system info & set vars
   include_tasks: get_info.yml
 
+- name: Get ZFS info
+  include_tasks: get_zfs_info.yml
+
 - name: Cursory variable check
   include_tasks: sanity.yml
 
@@ -15,7 +18,7 @@
     _mktemp: None
 
 - block:
-    - name: Cleanup any previos deployment
+    - name: Cleanup any previous deployment
       include_tasks: cleanup.yml
 
     - name: wipe devices
@@ -50,11 +53,17 @@
 
     - name: Partition Devices
       include_tasks: partitions.yml
+      when: wipe|default('') == "ABSOLUTELY"
 
     - name: Create filesystems
       include_tasks: fs.yml
+      when: wipe|default('') == "ABSOLUTELY"
 
-    - name: Create and mount ZFS pools
+    - name: Create zpool(s)
+      include_tasks: zpool.yml
+      when: zfs_pool is defined
+
+    - name: Create ZFS filesystems
       include_tasks: zfs.yml
       when: zfs_pool is defined and zfs_fs is defined
 
@@ -66,6 +75,8 @@
 
     - name: Configure the new install
       include_tasks: configure.yml
+
+    # split out bootloader stuff from the above
 
     - name: Create debootstrap user on target
       include_tasks: user.yml
@@ -93,5 +104,3 @@
       zfs:
         name: "{{ zfs_root }}@bootstrap"
         state: absent
-
- # when: not bootstrapped or wipe|default('') == "ABSOLUTELY"

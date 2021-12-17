@@ -17,7 +17,7 @@
     mode: "0644"
     owner: root
     group: root
-  when: release in ["stretch", "buster", "sid", "bullseye"]
+  when: release in ["stretch", "buster", "sid", "bullseye", "bookworm"]
 
 - name: Install add-apt-repository
   apt:

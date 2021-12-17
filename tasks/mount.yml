@@ -1,10 +1,5 @@
 ---
 
-- name: Read device information
-  community.general.parted: device={{ item }} unit=MiB
-  register: _target_device_info
-  loop: "{{ _target_devices }}"
-
 - name: Import zpools from target devices
   command: >
     zpool import \
@@ -23,18 +18,6 @@
       (?i)passphrase: "{{ item.passphrase }}"
   loop: "{{ zfs_pool }}"
   no_log: true
-
-- name: Gather facts about ZFS pools
-  community.general.zpool_facts: properties='name'
-  no_log: true
-
-- name: Gather facts about ZFS filesystems
-  community.general.zfs_facts:
-    dataset: "{{ item.name }}"
-    recurse: true
-  loop: "{{ ansible_zfs_pools }}"
-  loop_control:
-    label: "{{ item.name }}"
 
 - name: Mount root zfs filesystem
   command: "zfs mount {{ item.name }}"
