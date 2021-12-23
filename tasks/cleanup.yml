@@ -43,9 +43,6 @@
     - "dbstrp_mountpoint in _existing_mounts.stdout"
     - "'type zfs' in _existing_mounts.stdout"
 
-- name: Gather facts about ZFS pools
-  community.general.zpool_facts: properties='name'
-
 - name: Export ZFS pools
   command: zpool export -f -a
   loop: '{{ ansible_zfs_pools }}'

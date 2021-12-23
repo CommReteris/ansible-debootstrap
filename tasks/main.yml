@@ -1,5 +1,8 @@
 ---
 
+- name: Run initial APT tasks
+  include_tasks: initial_apt.yml
+
 - name: Get system info & set vars
   include_tasks: get_info.yml
 
@@ -9,9 +12,6 @@
 - name: Cursory variable check
   include_tasks: sanity.yml
 
-- name: Run initial APT tasks
-  include_tasks: initial_apt.yml
-
 - name: set mountpoint
   set_fact:
     _tgt_root: "{{ dbstrp_mountpoint }}"
@@ -20,6 +20,7 @@
 - block:
     - name: Cleanup any previous deployment
       include_tasks: cleanup.yml
+#      when: wipe|default('') == "ABSOLUTELY"
 
     - name: wipe devices
       include_tasks: wipe.yml
@@ -61,7 +62,8 @@
 
     - name: Create zpool(s)
       include_tasks: zpool.yml
-      when: zfs_pool is defined
+      when:
+        - zfs_pool is defined
 
     - name: Create ZFS filesystems
       include_tasks: zfs.yml

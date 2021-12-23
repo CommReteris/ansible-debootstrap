@@ -55,12 +55,9 @@ pools.
 `root_password`: Hashed, Salted root password, you can use mkpasswd to create
 one (Example: `$1$sfQaZkVR$Vo/0pjmJaljzakEQFCr7Q/`, obviously **don't use this
 one ;) )**
-`use_tmpfs`: Bootstrap to tmpfs, it's quicker and may reduce wear on flash
-(**default**: *yes*)
 `layout`: Dictionary of partitions / devices (**required**, see below)  
 `md`: List of DM-RAID devices (see below)  
 `lvm`: List of LVM volumes (see below)  
-`install_ppa`: PPAs to install (**Ubuntu Only**, see below)  
 `install_packages`: List of packages to install  
 `dbstrp_zfs_backport` Use the ZFS backport repo from 
 https://launchpad.net/~jonathonf/+archive/ubuntu/zfs  
@@ -167,13 +164,6 @@ layout:
         type: 8300
         fs: ext4
         mount: /
-```
-
-## PPA to install, for Ubuntu `install_ppa`
-Simple list of PPA to use, example:
-```
-install_ppa:
-  - ppa:nils-nm/zfs-linux-unofficial
 ```
 
 ## ZFS configuration

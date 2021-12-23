@@ -11,13 +11,14 @@
   loop_control:
     label: "{{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}"
 
-- name: Create zfs filesystems
-  command: >
-    zfs create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
-    {{ item['path'] }}
-  when:
-    - "item.path not in {{ ansible_zfs_datasets }}"
-  with_items: "{{ zfs_fs }}"
+- name: Load encryption keys
+  expect:
+    command: zfs load-key -r -L 'prompt' {{ item.poolname }}
+    responses:
+      (?i)passphrase: "{{ item.passphrase }}"
+  loop: "{{ zfs_pool }}"
+  #no_log: true
+  when: item.passphrase is defined and ansible_zfs_pools|length > 0
 
 - name: Gather facts about ZFS filesystems
   community.general.zfs_facts:
@@ -27,15 +28,46 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Unmount automounting zfs filesystems
-  command: zfs umount -a
+- name: Display information about zfsdatasets
+  debug:
+    var: ansible_zfs_datasets
+    verbosity: 1
 
-- name: Unmount noauto zfs filesystems
-  command: zfs unmount {{ item.name }}
-  when: "item.mounted == 'yes'"
-  loop: "{{ ansible_zfs_datasets }}"
+- name: Destroy root zfs dataset if it exists
+  community.general.zfs:
+    name: "{{ zfs_root }}"
+    state: absent
+  when: ansible_zfs_datasets|length > 0
+
+- name: Create zfs datasets
+  command: >
+    zfs create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
+    {{ item['path'] }}
+  when:
+    item.path not in _datasets or item.path == zfs_root
+  loop: "{{ zfs_fs }}"
+  vars:
+    _datasets: "{{ ansible_zfs_datasets|map(attribute='name')|list }}"
+
+#- name: Create zfs datasets
+#  community.general.zfs:
+#    name: "{{ item.name }}"
+#    state: present
+#    extra_zfs_properties: "{{ item.options|default("") }}"
+#    with_items: "{{ zfs_fs }}"
+
+- name: Gather facts about ZFS filesystems
+  community.general.zfs_facts:
+    dataset: "{{ item.name }}"
+    recurse: true
+  loop: "{{ ansible_zfs_pools }}"
   loop_control:
     label: "{{ item.name }}"
+
+- name: Display information about zfsdatasets
+  debug:
+    var: ansible_zfs_datasets
+    verbosity: 1
 
 - name: Export ZFS pools
   command: zpool export {{ item.name }}

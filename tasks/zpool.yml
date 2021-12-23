@@ -16,6 +16,15 @@
   loop_control:
     label: "{{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}"
 
+- name: Gather facts about ZFS pools
+  community.general.zpool_facts: #properties='name'
+  # no_log: true
+
+- name: Display information about zfspools
+  debug:
+    var: ansible_zfs_pools
+    verbosity: 1
+
 - name: Create any zpools that do not already exist
   expect:
     command: >
@@ -27,11 +36,23 @@
       Re-enter passphrase: "{{ item.passphrase }}"
       Enter new passphrase: "{{ item.passphrase }}"
       Re-enter new passphrase: "{{ item.passphrase }}"
-  when:
-    - "item.poolname not in {{ ansible_zfs_pools }}"
   loop: "{{ zfs_pool }}"
+  when: item.poolname not in _poolnames
+  vars:
+    _poolnames: "{{ ansible_zfs_pools|map(attribute='name')|list }}"
   # no_log: true
-  register: _zpool
 
 - name: Gather facts about ZFS pools
-  community.general.zpool_facts: properties='name'
+  community.general.zpool_facts: #properties='name'
+  # no_log: true
+
+- name: Display information about zfspools
+  debug:
+    var: ansible_zfs_pools
+    verbosity: 1
+
+- name: Export ZFS pools
+  command: zpool export {{ item.name }}
+  loop: '{{ ansible_zfs_pools }}'
+  loop_control:
+    label: "{{ item.name }}"

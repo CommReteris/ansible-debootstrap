@@ -18,18 +18,23 @@
   loop_control:
     label: "{{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}"
 
+- name: Gather facts about ZFS pools
+  community.general.zpool_facts: #properties='name'
+  # no_log: true
+
+- name: Display information about zfspools
+  debug:
+    var: ansible_zfs_pools
+    verbosity: 1
+
 - name: Load encryption keys
   expect:
     command: zfs load-key -r -L 'prompt' {{ item.poolname }}
     responses:
       (?i)passphrase: "{{ item.passphrase }}"
   loop: "{{ zfs_pool }}"
-  no_log: true
-  when: item.passphrase is defined
-
-- name: Gather facts about ZFS pools
-  community.general.zpool_facts: properties='name'
-  no_log: true
+  #no_log: true
+  when: item.passphrase is defined and ansible_zfs_pools|length > 0
 
 - name: Gather facts about ZFS filesystems
   community.general.zfs_facts:
@@ -38,6 +43,11 @@
   loop: "{{ ansible_zfs_pools }}"
   loop_control:
     label: "{{ item.name }}"
+
+- name: Display information about zfsdatasets
+  debug:
+    var: ansible_zfs_datasets
+    verbosity: 1
 
 - name: Export zpools
   command: zpool export {{ item.name }}

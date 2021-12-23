@@ -32,6 +32,16 @@
   - { src: 'interfaces', dest: 'network/interfaces' }
   when: not use_wifi
 
+- name: Configure NetworkManager to manage ethernet & wifi
+  copy:
+    content: |
+      [keyfile]
+      unmanaged-devices=*,except:type:wifi,except:type:gsm,except:type:cdma,except:type:ethernet
+    dest: "{{ _tgt_root }}/etc/NetworkManager/conf.d/managed_devices.conf"
+    owner: root
+    group: root
+    mode: 0o644
+
 - name: Configure Wifi with Network-Manager
   community.general.nmcli:
     type: "{{ item.type }}"
@@ -42,7 +52,7 @@
     autoconnect: "{{ item.autoconnect }}"
     state: present
   loop: "{{ network }}"
-  when: use_wifi
+  when: use_nmcli
 
 - name: Configure NFS
   mount:
@@ -211,7 +221,7 @@
     creates: /root/mok.priv
 
 - name: Download & build Yaml PP Perl module
-  command: "chroot {{ _tgt_root }} cpan 'YAML::PP'"
+  command: "chroot {{ _tgt_root }} eatmydata cpan 'YAML::PP'"
   no_log: true
 
 - name: Get kernel version installed on target
