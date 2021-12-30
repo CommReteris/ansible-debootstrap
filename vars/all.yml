@@ -160,3 +160,6 @@ pseudo_fs:
 
 # Do not touch these - they are automatically generated
 _target_devices: []
+
+#pci ID of Intel Iris Xe MAX
+xe_max: "8086:4905"

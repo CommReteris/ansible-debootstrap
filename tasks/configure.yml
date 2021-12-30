@@ -30,7 +30,7 @@
   with_items:
   - { src: 'resolv.conf', dest: 'resolv.conf' }
   - { src: 'interfaces', dest: 'network/interfaces' }
-  when: not use_wifi
+  when: not use_nmcli
 
 - name: Configure NetworkManager to manage ethernet & wifi
   copy:
@@ -69,7 +69,6 @@
     dest: "{{ _tgt_root }}/etc/dkms/zfs.conf"
     content: REMAKE_INITRD=yes
     mode: 0o644
-  when: release in ["stretch", "buster", "sid", "bullseye", "bookworm"]
 
 - name: Set kexec to load
   replace:
