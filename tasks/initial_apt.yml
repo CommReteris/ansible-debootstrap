@@ -1,33 +1,71 @@
 ---
 
+- name: Get live dist
+  shell: echo $(uname -n)
+  register: _live_dist
+
+- name: Set live dist
+  set_fact:
+    live_dist: "{{ _live_dist.stdout }}"
+
 # add more sources for apt
-- name: update sources.list
+- name: Add pop-os repositories
+  template:
+    src: "{{ item }}"
+    dest: "/etc/apt/sources.list.d/{{ item }}"
+    mode: "0644"
+    owner: root
+    group: root
+  loop:
+    - "pop-os-apps.sources"
+    - "pop-os-release.sources"
+    - "system.sources"
+  when: pop_os and live_dist != "pop-os"
+
+- name: Add ubuntu repositories
   template:
     src: "sources_ubuntu.list"
     dest: "/etc/apt/sources.list"
     mode: "0644"
     owner: root
     group: root
-  when: release in ["xenial", "artful", "bionic", "focal", "hirsuite"]
+  when: not pop_os and release in ["xenial", "artful", "bionic", "focal", "hirsute", "impish"]
 
-- name: install ZFS ppa for bionic
-  apt_repository:
-    repo: ppa:jonathonf/zfs
-  register: _dbstrp_zfs_backport_repo
-  when: >-
-    ansible_distribution == "Ubuntu"
-    and ansible_distribution_release in ["bionic", "disco"]
-    and zfs_pool is defined
-    and dbstrp_zfs_backport|default(False)
-
-- name: update sources.list
+- name: Add debian repositories
   template:
     src: "sources_debian.list"
     dest: "/etc/apt/sources.list"
     mode: "0644"
     owner: root
     group: root
-  when: release in ["stretch", "buster", "sid", "bullseye"]
+  when: not pop_os and release in ["stretch", "buster", "sid", "bullseye", "bookworm"]
+
+- name: Install add-apt-repository
+  apt:
+    name: software-properties-common
+    state: latest
+    update_cache: no
+    install_recommends: no
+
+- name: Add repository keys
+  apt_key:
+    id: "{{ item.key }}"
+    keyserver: "{{ item.keyserver }}"
+    state: present
+    validate_certs: no
+  loop: "{{ keys }}"
+  when: keys is defined and keys|length > 0
+
+- name: Add repositories
+  apt_repository:
+    filename: "{{ item.name }}"
+    repo: "{{ item.deb }}"
+    codename: "{{ item.release|default(release) }}"
+    state: present
+    validate_certs: no
+    update_cache: no
+  loop: "{{ repos }}"
+  when: repos is defined and repos|length > 0
 
 - name: Filter dependencies to install with no_recommends
   set_fact:
@@ -61,7 +99,10 @@
         name: zfs
         state: present
 
-  when: dbstrp_zfs_backport|default(False)
+  when: >-
+    live_dist != "pop-os"
+    and release in ["bionic", "disco", "hirsute", "impish"]
+    and zfs_pool is defined
 
 - name: Install dependencies
   apt:

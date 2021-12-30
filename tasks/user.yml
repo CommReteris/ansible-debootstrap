@@ -66,6 +66,12 @@
           -g {{ dbstrp_user['group'] }} -G sudo -p {{ dbstrp_user['password'] }}
           {{ dbstrp_user['name'] }}
 
+    - name: Create home directory for bootstrap user
+      file:
+        state: directory
+        path: "{{ dbstrp_mountpoint }}/home/{{ dbstrp_user['name'] }}"
+        owner: "{{ dbstrp_user['name'] }}"
+
     - name: Create ssh directory for bootstrap user
       file:
         state: directory
@@ -95,3 +101,4 @@
         content: "{{ dbstrp_user['name'] }} ALL=(ALL) NOPASSWD:ALL"
 
   when: _tgt_user
+

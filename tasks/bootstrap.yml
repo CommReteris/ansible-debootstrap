@@ -1,32 +1,15 @@
 ---
-# The reason to use tmpfs here is that dpkg is awful slow, especially when installing to
-# slower devices (think thumb drive). It can be configured by the user, however.
-
-- block:
-  - name: create another tmpdir
-    command: mktemp -d
-    register: _mktemp
-
-  - name: set target (tmpfs)
-    set_fact:
-      _bootstrap_target: "{{ _mktemp.stdout }}"
-      _mktemp: None
-
-  - name: mount tmpfs
-    command: "mount -t tmpfs -o size=2G none {{ _bootstrap_target }} warn=no"
-
-  when: use_tmpfs
 
 - name: set target
   set_fact:
     _bootstrap_target: "{{ _tgt_root }}"
-  when: not use_tmpfs
 
 - block:
   - name: run bootstrap
     command: >
-      eatmydata debootstrap {% if dbstrp_variant is defined %}--variant={{ dbstrp_variant }}{% endif %}
-      {{ release }} {{ _bootstrap_target }} {{ use_mirror|default(mirrors[release]) }}
+      eatmydata debootstrap
+        {% if dbstrp_variant is defined %} --variant={{ dbstrp_variant }} {% endif %}
+        --include=python3-apt,gnupg,ca-certificates,wget {{ release }} {{ _bootstrap_target }}
 
   - name: bind mount pseudo filesystems
     shell: "mkdir {{ _bootstrap_target }}/{{ item }}; mount --bind /{{ item }} {{ _bootstrap_target }}/{{ item }} warn=no"
@@ -41,7 +24,7 @@
 
   - name: build list of packages to install
     set_fact:
-      _install: "{{ install_packages['all'] + install_packages[release] }}"
+      _install: "{{ install_packages.all + install_packages[release] }}"
 
   - name: Filter packages to install with no_recommends
     set_fact:
@@ -56,32 +39,73 @@
     include_tasks: cleanup.yml
 
 - block:
-  # add more sources for apt
-  - name: update sources.list
-    template:
-      src: "sources_ubuntu.list"
-      dest: "{{ _bootstrap_target }}/etc/apt/sources.list"
+  - name: Copy repositories from live session
+    copy:
+      remote_src: yes
+      dest: "{{ _bootstrap_target }}/etc/apt/sources.list.d/{{ item.name }}.list"
+      src: "/etc/apt/sources.list.d/{{ item.name }}.list"
       mode: "0644"
       owner: root
       group: root
-    when: release in ["xenial", "artful", "bionic", "focal", "hirsuite"]
+    loop: "{{ repos }}"
+    when: repos is defined and repos|length > 0
 
-  - name: Update sources.list
+  - name: Add pop-os repositories
     template:
-      src: "sources_debian.list"
-      dest: "{{ _bootstrap_target }}/etc/apt/sources.list"
+      src: "{{ item }}"
+      dest: "{{ _bootstrap_target }}/etc/apt/sources.list.d/{{ item }}"
       mode: "0644"
       owner: root
       group: root
-    when: release in ["stretch", "buster", "sid", "bullseye"]
+    loop:
+      - "pop-os-apps.sources"
+      - "pop-os-release.sources"
+      - "system.sources"
+    when: pop_os
+
+  - block:
+    - name: Add ubuntu repositories
+      template:
+        src: "sources_ubuntu.list"
+        dest: "{{ _bootstrap_target }}/etc/apt/sources.list"
+        mode: "0644"
+        owner: root
+        group: root
+      when: release in ["xenial", "artful", "bionic", "focal", "hirsute", "impish"]
+
+    - name: Add debian repositories
+      template:
+        src: "sources_debian.list"
+        dest: "{{ _bootstrap_target }}/etc/apt/sources.list"
+        mode: "0644"
+        owner: root
+        group: root
+      when: release in ["stretch", "buster", "sid", "bullseye", "bookworm"]
+    when: not pop_os
+
+  - block:
+    - name: Add repository keys
+      shell: "chroot {{ _bootstrap_target }} apt-key adv --keyserver {{ item.keyserver }} --recv-keys {{ item.key }}"
+      loop: "{{ keys }}"
+      when: not use_gpg|default(false)
+
+    - name: Add repository keys with gpg
+      command: >-
+        chroot {{ _bootstrap_target }} gpg
+        --no-default-keyring
+        --keyring /usr/share/keyrings/{{ item.name }}-archive-keyring.gpg
+        --keyserver {{ item.keyserver }}
+        --recv-keys {{ item.key }}
+      loop: "{{ keys }}"
+      when:  use_gpg|default(false)
+    when: keys is defined and keys|length > 0
 
   - name: apt update & upgrade
     command: "{{ item }}"
     loop:
       - "chroot {{ _bootstrap_target }} apt update"
-      - "chroot {{ _bootstrap_target }} apt full-upgrade -yq"
+      - "chroot {{ _bootstrap_target }} apt upgrade -y"
 
-  # cut down on fsync
   - name: Install eatmydata & locales & console-setup
     command: "chroot {{ _bootstrap_target }} apt-get -yq install eatmydata locales console-setup"
 
@@ -100,6 +124,7 @@
 
   - name: Run dpkg-reconfigure tzdata
     command: "chroot {{ _bootstrap_target }} dpkg-reconfigure tzdata"
+
   - name: Copy locale_prep script
     copy:
       content: |
@@ -116,26 +141,6 @@
   - name: Generate & configure locales
     command: "chroot {{ _bootstrap_target }} /root/locale_prep.sh"
 
-  - name: Allow ppa use
-    command: "chroot {{ _bootstrap_target }} eatmydata apt-get -yq install software-properties-common"
-    when: >-
-      install_ppa|default([])|length > 0 or
-      (
-        ansible_distribution == "Ubuntu"
-        and ansible_distribution_release in ["bionic", "disco"]
-        and zfs_pool is defined
-      and dbstrp_zfs_backport|default(False))
-
-  - name: Install ZFS ppa for 0.8
-    command: >-
-      chroot {{ _bootstrap_target }} eatmydata
-      add-apt-repository -yu ppa:jonathonf/zfs
-    when: >-
-      ansible_distribution == "Ubuntu"
-      and ansible_distribution_release in ["bionic", "disco"]
-      and zfs_pool is defined
-      and dbstrp_zfs_backport|default(False)
-
   # pool can't be imported when the hostid changes
   - name: copy hostid to chroot
     command: >-
@@ -146,12 +151,6 @@
     command: echo $(hostid)
     register: _hostid
 
-  # A bit ineffective, since we'll be upgrading the cache every time.
-  - name: Enable ppa
-    shell: "chroot  {{ _bootstrap_target }} eatmydata add-apt-repository -yu {{ item }}"
-    with_items: "{{ install_ppa|default([]) }}"
-    when: install_ppa is defined and install_ppa|length > 0
-
   - name: install packages
     command: "{{ item }}"
     loop:
@@ -159,31 +158,10 @@
           {{ _install_no_recommends | join(' ') }}"
       - "chroot {{ _bootstrap_target }} eatmydata apt-get -yq  install {{ _install | join(' ') }}"
       - "chroot {{ _bootstrap_target }} eatmydata apt-get -q clean"
-
   environment: "{{ _apt_env }}"
 
-- block:
-  - name: umount pseudo filesystems
-    command: umount {{ _bootstrap_target }}/{{ item }}
-    with_items: "{{ pseudo_fs|reverse|list }}"
-
-  - name: copy data from temp
-    shell: cp -a {{ _bootstrap_target }}/* {{ _tgt_root }}/
-
-  - name: bind mount pseudo filesystems
-    shell: mkdir {{ _tgt_root }}/{{ item }}; mount --bind /{{ item }} {{ _tgt_root }}/{{ item }}
-    register: _pseudomount
-    with_items: "{{ pseudo_fs }}"
-
-  - name: umount tmpfs
-    command: "umount {{ _bootstrap_target }}"
-
-  - name: remove tmpfs
-    file:
-      state: absent
-      dest: "{{ _bootstrap_target }}"
-
-  when: use_tmpfs
+- name: Set bootfs
+  command: "zpool set bootfs={{ zfs_root }} {{ zpool_root }}"
 
 - name: Snapshot unconfigured filesystems
   zfs:

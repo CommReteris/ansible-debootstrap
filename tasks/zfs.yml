@@ -1,36 +1,24 @@
 ---
-- name: Remove any residual directories in dbstrp_mountpoint
-  file:
-    path: "{{ dbstrp_mountpoint }}"
-    state: absent
 
-- name: create zpools
-  expect:
-    command: >
-      zpool create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
-      {% if 'options' in item %}-O {{ item['fs_options']|default([])|join(' -O ') }}{% endif %}
-      -R {{ _tgt_root }} {{ item['poolname']|default('rpool') }} {{ item.mode }} {{ item['devices']|join(' ') }}
-    responses:
-      Enter passphrase: "{{ item.passphrase }}"
-      Re-enter passphrase: "{{ item.passphrase }}"
-  loop: "{{ zfs_pool }}"
-  # no_log: true
-  register: _zpool
-
-- name: create zfs filesystems
+- name: Import zpools from target devices
   command: >
-    zfs create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
-    {{ item['path'] }}
-  with_items: "{{ zfs_fs }}"
+    zpool import \
+      -a -f -N -R {{ dbstrp_mountpoint }} \
+      -d {{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}
+  when:
+    - "item[1] is defined"
+  loop: "{{ _target_device_info.results|subelements('partitions') }}"
+  loop_control:
+    label: "{{ item.0.disk.dev + ('p' if 'nvme' in item.0.disk.dev else '') + item.1.num|string}}"
 
-- name: Set bootfs
-  command: "zpool set bootfs={{ zfs_root }} rpool"
-
-- name: Gather facts about ZFS pools
-  community.general.zpool_facts: properties='name'
-
-- name: Unmount automounting zfs filesystems
-  command: zfs umount -a
+- name: Load encryption keys
+  expect:
+    command: zfs load-key -r -L 'prompt' {{ item.poolname }}
+    responses:
+      (?i)passphrase: "{{ item.passphrase }}"
+  loop: "{{ zfs_pool }}"
+  #no_log: true
+  when: item.passphrase is defined and ansible_zfs_pools|length > 0
 
 - name: Gather facts about ZFS filesystems
   community.general.zfs_facts:
@@ -40,12 +28,46 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Unmount noauto zfs filesystems
-  command: zfs unmount {{ item.name }}
-  when: "item.mounted == 'yes'"
-  loop: "{{ ansible_zfs_datasets }}"
+- name: Display information about zfsdatasets
+  debug:
+    var: ansible_zfs_datasets
+    verbosity: 1
+
+- name: Destroy root zfs dataset if it exists
+  community.general.zfs:
+    name: "{{ zfs_root }}"
+    state: absent
+  when: ansible_zfs_datasets|length > 0
+
+- name: Create zfs datasets
+  command: >
+    zfs create {% if 'options' in item %}-o {{ item['options']|default([])|join(' -o ') }}{% endif %}
+    {{ item['path'] }}
+  when:
+    item.path not in _datasets or item.path == zfs_root
+  loop: "{{ zfs_fs }}"
+  vars:
+    _datasets: "{{ ansible_zfs_datasets|map(attribute='name')|list }}"
+
+#- name: Create zfs datasets
+#  community.general.zfs:
+#    name: "{{ item.name }}"
+#    state: present
+#    extra_zfs_properties: "{{ item.options|default("") }}"
+#    with_items: "{{ zfs_fs }}"
+
+- name: Gather facts about ZFS filesystems
+  community.general.zfs_facts:
+    dataset: "{{ item.name }}"
+    recurse: true
+  loop: "{{ ansible_zfs_pools }}"
   loop_control:
     label: "{{ item.name }}"
+
+- name: Display information about zfsdatasets
+  debug:
+    var: ansible_zfs_datasets
+    verbosity: 1
 
 - name: Export ZFS pools
   command: zpool export {{ item.name }}

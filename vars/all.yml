@@ -1,21 +1,18 @@
 ---
-mirrors:
-  stretch: http://httpredir.debian.org/debian
-  buster: http://httpredir.debian.org/debian
-  bullseye: http://httpredir.debian.org/debian
-  xenial: http://archive.ubuntu.com/ubuntu
-  bionic: http://archive.ubuntu.com/ubuntu
-  eoan: http://archive.ubuntu.com/ubuntu
-  focal: http://archive.ubuntu.com/ubuntu
-  groovy: http://archive.ubuntu.com/ubuntu
-  hirsuite: http://archive.ubuntu.com/ubuntu
-
-supported_releases: ['stretch', 'buster', 'bullseye', 'bionic', 'eoan', 'focal', 'groovy', 'hirsuite']
+supported_releases: [
+    'stretch', 'buster', 'bullseye', 'bookworm',
+    'bionic', 'eoan', 'focal', 'groovy', 'hirsute', 'impish'
+]
 
 # packages to install on target
 install_packages:
   all:
     - build-essential
+    - nano
+    - wget
+    - curl
+    - tasksel
+    - software-properties-common
     - ca-certificates
     - console-setup
     - dpkg-dev
@@ -27,8 +24,6 @@ install_packages:
     - libboolean-perl
     - libconfig-inifiles-perl
     - libsort-versions-perl
-    - linux-headers-amd64
-    - linux-image-amd64
     - locales
     - mbuffer
     - nfs-common
@@ -40,8 +35,20 @@ install_packages:
     - sudo
     - systemd-sysv
     - zfs-dracut
-  hirsuite:
-    - python-minimal
+    - zfs-dkms
+    - network-manager
+    - tree
+    - net-tools
+    - manpages
+    - man-db
+  impish:
+    - linux-headers-generic
+    - linux-image-generic
+    - linux-firmware
+  hirsute:
+    - linux-headers-generic
+    - linux-image-generic
+    - linux-firmware
   bionic:
     - python-minimal
   eoan:
@@ -52,12 +59,36 @@ install_packages:
     - ""
   jessie:
     - python-minimal
+    - linux-image-amd64
+    - linux-headers-amd64
   stretch:
     - python-minimal
+    - linux-image-amd64
+    - linux-headers-amd64
   buster:
     - python-minimal
+    - linux-image-amd64
+    - linux-headers-amd64
+    - firmware-iwlwifi
+    - iw
+    - wireless-tools
+    - pciutils
   bullseye:
     - python2-minimal
+    - linux-image-amd64
+    - linux-headers-amd64
+    - firmware-iwlwifi
+    - plymouth
+    - plymouth-themes
+    - intel-microcode
+  bookworm:
+    - python2-minimal
+    - linux-image-amd64
+    - linux-headers-amd64
+    - firmware-iwlwifi
+    - plymouth
+    - plymouth-themes
+    - intel-microcode
 
 # packages to install on live system
 dependencies:
@@ -72,8 +103,8 @@ dependencies:
   - uuid-runtime
   - eatmydata
   - dosfstools
-  - zfs-dkms
   - zfs-zed
+  - zfs-dkms
   - zfsutils-linux
 
 # Any packages listed here will be install with --install-no-recommends
@@ -82,8 +113,13 @@ no_recommends:
   - linux-headers-generic
   - linux-image-generic
   - linux-image-amd64
+  - dpkg-dev
   - dkms
   - zfs-dkms
+  - linux-firmware
+  - firmware-iwlwifi
+  - firmware-misc-nonfree
+  - intel-microcode
 
 _apt_env:
   TERM: linux
@@ -124,3 +160,6 @@ pseudo_fs:
 
 # Do not touch these - they are automatically generated
 _target_devices: []
+
+#pci ID of Intel Iris Xe MAX
+xe_max: "8086:4905"

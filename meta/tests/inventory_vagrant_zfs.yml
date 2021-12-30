@@ -109,5 +109,3 @@ all:
               authorized_keys: {}
 
           use_mirror: http://de.archive.ubuntu.com/ubuntu
-          # Building ZFS may require considerably amounts of storage (> 2GiB)
-          use_tmpfs: false
