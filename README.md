@@ -1,35 +1,27 @@
-# debootstrap debian on native encrypted zfs through ansible
+# debootstrap Debian / Ubuntu / Pop! OS on Native Encrypted zfs through Ansible
 
-This role will allow you to bootstrap a system over SSH using ansible. Typical
-applications include remote installing via bootable thumb drive or PXE boot or
-installing virtual machines using the host system. The author personally uses
-this for all his Debian installation needs.
+This role will allow you to bootstrap a system running from a Live-USB/PXE boot
+over SSH using ansible. The author personally uses this for all his Debian-based
+distribution installation needs.
 
 ## Features
 * **Your own partition layout**: You can choose your own partition layout
-* **ZFS** is supported, even/especially as a root device
-* **Encryption**: Support for native zfs encryption (it
-is strongly suggested you use ansible-vault here)
-* **zfsbootmanager**: boot with refind/zbm (see: https://github.com/zbm-dev/zfsbootmenu)
+* Designed with root-on-native-encrypted-**ZFS** in mind
+* Boot with **rEFIind** & **zfsbootmanager** (see: https://github.com/zbm-dev/zfsbootmenu)
 
 ## Limitations
-* You can't have the same names for ZFS pools and crypto devices
-* requires a /boot and BIOS boot partition for encrypted / ZFS
+* I suck at testing
 
 ## Supported distributions
 * Debian
-  * Stretch (untested)
-  * Buster (untested)
   * Bullseye
   * Bookworm
 * Ubuntu
-  * bionic (18.04 LTS) (untested)
-  * disco (19.04) (untested)
-  * eoan (19.10) **requires debootstrap 1.0.115** (untested)
   * hirsute
   * impish
+  * Pop! OS 21.04 & 21.10
 
-Minor modifications will likely make it possible to install newer and perhaps
+Minor modifications will likely make it possible to install newer and 
 older versions as well, or even other Debian based distributions. There are
 some sanity checks executed, depending on lists in vars/main.yml, so you would
 need to add the distribution codename there. Pull requests welcome.
@@ -40,33 +32,97 @@ This will make a few modifications to the system that is being used as install
 medium. This includes installing a few packages, otherwise everything should
 be cleaned up afterwards.
 
-* It will install the eatmydata and debootstrap package
-* It will install cryptsetup for encrypted targets
-* It will install ZFS tools when using ZFS
-
-Normally it is assumed that a some sort of PXE or USB rescue system is used,
-some caveats apply otherwise with regards to device names. As an example, you
-can't use the same name for any device mapper devices (luks encryption) or ZFS
-pools. 
-
 # Configuration
-## Global variables
-`release`: The release codename (**required**, example: *cosmic*)  
-`root_password`: Hashed, Salted root password, you can use mkpasswd to create
-one (Example: `$1$sfQaZkVR$Vo/0pjmJaljzakEQFCr7Q/`, obviously **don't use this
-one ;) )**
-`layout`: Dictionary of partitions / devices (**required**, see below)  
-`md`: List of DM-RAID devices (see below)  
-`lvm`: List of LVM volumes (see below)  
-`install_packages`: List of packages to install  
-`dbstrp_zfs_backport` Use the ZFS backport repo from 
-https://launchpad.net/~jonathonf/+archive/ubuntu/zfs  
-`zfs_pool`: ZFS pool (see ZFS section)  
-`zfs_fs`: ZFS filesystems (see ZFS section)  
-`zfs_root`: ZFS devices to use as root  
-`wipe`: Set to to string "ABSOLUTELY" if you wish to wipe the disk, this will
+## Global variables *(ansible-debootstrap/vars/all.yml)*
+* `fqdn`: The fully-qualified domain name of the target  
+* `release`: The release codename (**required**, example: *hirsute*)  
+* `pop_os`: bool; whether to install the pop-os version of `release`. *Note: Do not combine with a non-ubuntu release*  
+* `repos`: Additional repositories to use for installation
+* `keys`: GPG keys for additional repositories
+
+  ####   Example repos/keys entry:
+  ```
+  repos:
+    - name: pop-os-apps
+      deb: deb http://apt.pop-os.org/staging-proprietary {{ release }} main
+    - name: pop-os-release
+      deb: deb http://apt.pop-os.org/staging/master {{ release }} main
+    - name: pop-os-staging-ubuntu
+    - name: jonathonf-zfs
+      deb: deb [allow-insecure=yes allow-downgrade-to-insecure=yes] http://ppa.launchpad.net/jonathonf/zfs/ubuntu hirsute main
+  keys:
+    - name: system76
+      key: 63C46DF0140D738961429F4E204DD8AEC33A7AFF
+      keyserver: keyserver.ubuntu.com
+    - name: jonothonf
+      key: 4AB0F789CBA31744CC7DA76A8CF63AD3F06FC659
+      keyserver: keyserver.ubuntu.com
+  ```
+* `wipe`: Set to to string "ABSOLUTELY" if you wish to wipe the disk, this will
 remove any disklabels present as well as issue a TRIM/UNMAP for the device.
-Useful when you want to overwrite a target. **Please use extreme caution**  
+Useful when you want to overwrite a target. **Please use extreme caution!** 
+Electing not to wipe will result in the (mostly untested) deployment of a new 
+installation alongside an existing one. **Note:** *in this case the existing 
+installation zfs pool must match the new one, as the role will simply create
+a new zvol for the root of the new install.*  
+* `timezone:` timezone for new installation; *e.g.* `America/New_York"`  
+* `locale:` locale for new installation; *e.g.* `"en_US.UTF-8"`  
+* `layout`: Dictionary of partitions / devices (**required**, see below)  
+  #### Example layout for single NVME device with partitions for EFI system partition & ZFS:
+  ```
+  layout:
+    - device: '/dev/nvme0n1'
+      partitions:
+        - num: 1
+          size: 512M
+          type: ef00
+          fs: vfat
+          mount: /boot/efi
+          mountopts: defaults,noauto
+        - num: 2
+          type: 8200
+          fs: zfs_member
+  ```
+* `zpool_root:` Name of zpool to use; *e.g.,* `rpool`  
+* `zfs_root`: zfs dataset for installation root; *e.g.,* `"{{ zpool_root }}/ROOT/{{ release }}"`  
+* `zfs_pool`: ZFS pool definition
+  #### Example ZFS Pool definition
+  ```
+  zfs_pool:
+    - poolname: "{{ zpool_root }}"
+      devices:
+        - /dev/nvme0n1p2
+      options:
+        - ashift=12
+        - autotrim=on
+      fs_options:
+        - encryption=aes-256-gcm
+        - acltype=posixacl
+        - keyformat=passphrase
+        - keylocation=prompt
+        - canmount=off
+        - mountpoint=none
+        - compression=lz4
+        - dnodesize=auto
+        - relatime=on
+        - normalization=formD
+        - xattr=sa
+      passphrase: !vault |
+        $ANSIBLE_VAULT;1.1;AES256
+        <<redacted>>
+      zbm_timeout: 15
+      zbm_cmdline:
+        - ro
+        - verbose
+        - intel_iommu=on
+        - iommu=pt
+        - rd.driver.blacklist=nouveau
+        - rd.module.blacklist=nouveau
+  
+  ```
+* `zfs_fs`: ZFS filesystems (see ZFS section)  
+* `install_packages`: List of packages to install  
+
 
 ## Debootstrap user options
 `dbstrp_user`:  
@@ -147,24 +203,7 @@ etc.
 `lvm`: Dictionary of lvol options, these are passed to the [lvol noduule](https://docs.ansible.com/ansible/latest/modules/lvol_module.html)
 as such, all options available to that module can be used. 
 
-#### Example device with partitions:
-```
-layout:
-  - device: '/dev/sdb'
-    partitions:
-      - num: 1
-        size: 1M
-        type: ef02
-      - num: 2
-        size: 253M
-        type: 8300
-        fs: ext4
-        mount: /boot
-      - num: 3 # Notice absence of size here, will use full disk
-        type: 8300
-        fs: ext4
-        mount: /
-```
+
 
 ## ZFS configuration
 ### Pool definition `zfs_pool`
